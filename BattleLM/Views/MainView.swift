@@ -187,12 +187,13 @@ struct SingleTerminalView: View {
             
             // 终端内容区域 - 根据模式显示不同视图
             if isInteractiveMode && ai.isActive {
-                // Interactive 模式：真实终端
-                InteractiveTerminalView(
-                    ai: ai,
+                // Interactive 模式：xterm.js + PTY 真终端
+                XtermTerminalView(
+                    command: "/opt/homebrew/bin/tmux",
+                    args: ["-L", "battlelm", "attach", "-t", ai.tmuxSession],
                     isConnected: $isConnected,
-                    onConnectionFailed: {
-                        // 连接失败时自动切回 Snapshot 模式
+                    onExit: { _ in
+                        // 退出时自动切回 Snapshot 模式
                         withAnimation {
                             isInteractiveMode = false
                         }
