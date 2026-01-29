@@ -14,17 +14,37 @@ struct BattleLMApp: App {
         .commands {
             SidebarCommands()
             
-            // 自定义菜单
+            // 文件菜单
             CommandGroup(after: .newItem) {
+                Button("New AI Instance") {
+                    appState.showAddAISheet = true
+                }
+                .keyboardShortcut("n", modifiers: [.command])
+                
                 Button("New Group Chat") {
                     appState.showCreateGroupSheet = true
                 }
                 .keyboardShortcut("n", modifiers: [.command, .shift])
-                
-                Button("Add AI Instance") {
-                    appState.showAddAISheet = true
+            }
+            
+            // 视图菜单 - 终端切换
+            CommandGroup(after: .sidebar) {
+                Button(appState.showTerminalPanel ? "Hide Terminal" : "Show Terminal") {
+                    withAnimation(.easeInOut(duration: 0.2)) {
+                        appState.showTerminalPanel.toggle()
+                    }
                 }
-                .keyboardShortcut("a", modifiers: [.command, .shift])
+                .keyboardShortcut("t", modifiers: [.command])
+                
+                Divider()
+            }
+            
+            // 设置
+            CommandGroup(replacing: .appSettings) {
+                Button("Settings...") {
+                    appState.showSettingsSheet = true
+                }
+                .keyboardShortcut(",", modifiers: [.command])
             }
         }
     }

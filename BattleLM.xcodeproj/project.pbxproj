@@ -6,6 +6,10 @@
 	objectVersion = 77;
 	objects = {
 
+/* Begin PBXBuildFile section */
+		2F48CAA42F2B850D00A8AE19 /* SwiftTerm in Frameworks */ = {isa = PBXBuildFile; productRef = 2F48CAA32F2B850D00A8AE19 /* SwiftTerm */; };
+/* End PBXBuildFile section */
+
 /* Begin PBXContainerItemProxy section */
 		2F9622072F291FF400D03770 /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
@@ -52,6 +56,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				2F48CAA42F2B850D00A8AE19 /* SwiftTerm in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -72,12 +77,20 @@
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
+		2F48CAA22F2B850D00A8AE19 /* Frameworks */ = {
+			isa = PBXGroup;
+			children = (
+			);
+			name = Frameworks;
+			sourceTree = "<group>";
+		};
 		2F9621F02F291FEB00D03770 = {
 			isa = PBXGroup;
 			children = (
 				2F9621FB2F291FEB00D03770 /* BattleLM */,
 				2F9622092F291FF400D03770 /* BattleLMTests */,
 				2F9622132F291FF400D03770 /* BattleLMUITests */,
+				2F48CAA22F2B850D00A8AE19 /* Frameworks */,
 				2F9621FA2F291FEB00D03770 /* Products */,
 			);
 			sourceTree = "<group>";
@@ -112,6 +125,7 @@
 			);
 			name = BattleLM;
 			packageProductDependencies = (
+				2F48CAA32F2B850D00A8AE19 /* SwiftTerm */,
 			);
 			productName = BattleLM;
 			productReference = 2F9621F92F291FEB00D03770 /* BattleLM.app */;
@@ -195,6 +209,9 @@
 			);
 			mainGroup = 2F9621F02F291FEB00D03770;
 			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				2F48CA9F2F2B801A00A8AE19 /* XCRemoteSwiftPackageReference "SwiftTerm" */,
+			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 2F9621FA2F291FEB00D03770 /* Products */;
 			projectDirPath = "";
@@ -398,10 +415,9 @@
 				COMBINE_HIDPI_IMAGES = YES;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = 2GWPG8KGW5;
-				ENABLE_APP_SANDBOX = YES;
+				ENABLE_APP_SANDBOX = NO;
 				ENABLE_HARDENED_RUNTIME = YES;
 				ENABLE_PREVIEWS = YES;
-				ENABLE_USER_SELECTED_FILES = readonly;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
 				LD_RUNPATH_SEARCH_PATHS = (
@@ -430,10 +446,9 @@
 				COMBINE_HIDPI_IMAGES = YES;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = 2GWPG8KGW5;
-				ENABLE_APP_SANDBOX = YES;
+				ENABLE_APP_SANDBOX = NO;
 				ENABLE_HARDENED_RUNTIME = YES;
 				ENABLE_PREVIEWS = YES;
-				ENABLE_USER_SELECTED_FILES = readonly;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
 				LD_RUNPATH_SEARCH_PATHS = (
@@ -573,6 +588,25 @@
 			defaultConfigurationName = Release;
 		};
 /* End XCConfigurationList section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		2F48CA9F2F2B801A00A8AE19 /* XCRemoteSwiftPackageReference "SwiftTerm" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/migueldeicaza/SwiftTerm";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 1.5.0;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		2F48CAA32F2B850D00A8AE19 /* SwiftTerm */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 2F48CA9F2F2B801A00A8AE19 /* XCRemoteSwiftPackageReference "SwiftTerm" */;
+			productName = SwiftTerm;
+		};
+/* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = 2F9621F12F291FEB00D03770 /* Project object */;
 }

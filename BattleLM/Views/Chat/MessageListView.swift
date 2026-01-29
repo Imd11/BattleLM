@@ -10,21 +10,23 @@ struct MessageListView: View {
     }
     
     var body: some View {
-        ScrollViewReader { proxy in
-            ScrollView {
-                LazyVStack(spacing: 16) {
-                    ForEach(messages) { message in
-                        MessageBubbleView(message: message)
-                            .id(message.id)
+        GeometryReader { geometry in
+            ScrollViewReader { proxy in
+                ScrollView {
+                    LazyVStack(spacing: 16) {
+                        ForEach(messages) { message in
+                            MessageBubbleView(message: message, containerWidth: geometry.size.width)
+                                .id(message.id)
+                        }
                     }
+                    .padding()
                 }
-                .padding()
-            }
-            .onChange(of: messages.count) { _ in
-                // 自动滚动到最新消息
-                if let lastMessage = messages.last {
-                    withAnimation {
-                        proxy.scrollTo(lastMessage.id, anchor: .bottom)
+                .onChange(of: messages.count) { _ in
+                    // 自动滚动到最新消息
+                    if let lastMessage = messages.last {
+                        withAnimation {
+                            proxy.scrollTo(lastMessage.id, anchor: .bottom)
+                        }
                     }
                 }
             }
@@ -35,6 +37,7 @@ struct MessageListView: View {
 /// 消息气泡视图
 struct MessageBubbleView: View {
     let message: Message
+    var containerWidth: CGFloat = 500  // 默认宽度
     @EnvironmentObject var appState: AppState
     
     var isUser: Bool {
@@ -47,6 +50,11 @@ struct MessageBubbleView: View {
     
     var aiInstance: AIInstance? {
         appState.aiInstance(for: message.senderId)
+    }
+    
+    /// 消息气泡最大宽度（容器宽度的 70%）
+    var maxBubbleWidth: CGFloat {
+        max(containerWidth * 0.7, 200)  // 最小 200
     }
     
     var body: some View {
@@ -77,6 +85,15 @@ struct MessageBubbleView: View {
     // 普通消息样式
     private var regularMessageView: some View {
         HStack(alignment: .top, spacing: 12) {
+            // 左侧空白（10%）
+            Spacer()
+                .frame(width: containerWidth * 0.10)
+            
+            // 用户消息额外左边空白（推向右边）
+            if isUser {
+                Spacer()
+            }
+            
             // 左侧头像（AI 消息）
             if !isUser {
                 avatarView
@@ -96,13 +113,50 @@ struct MessageBubbleView: View {
                     }
                 }
                 
-                // 消息内容
+                // 消息内容（带右键菜单）
                 Text(message.content)
                     .padding(12)
                     .background(bubbleBackground)
                     .foregroundColor(bubbleTextColor)
                     .cornerRadius(16)
-                    .frame(maxWidth: 450, alignment: isUser ? .trailing : .leading)
+                    .frame(maxWidth: maxBubbleWidth, alignment: isUser ? .trailing : .leading)
+                    .contextMenu {
+                        // 仅 AI 消息显示反应菜单
+                        if !isUser {
+                            Button {
+                                reactToMessage(.like)
+                            } label: {
+                                Label("👍 Like", systemImage: "hand.thumbsup.fill")
+                            }
+                            
+                            Button {
+                                reactToMessage(.dislike)
+                            } label: {
+                                Label("👎 Dislike", systemImage: "hand.thumbsdown.fill")
+                            }
+                            
+                            Divider()
+                            
+                            Button {
+                                NSPasteboard.general.clearContents()
+                                NSPasteboard.general.setString(message.content, forType: .string)
+                            } label: {
+                                Label("Copy Text", systemImage: "doc.on.doc")
+                            }
+                        }
+                    }
+                
+                // 用户反应显示
+                if let reaction = message.userReaction {
+                    Text(reaction.emoji)
+                        .font(.system(size: 16))
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 2)
+                        .background(Color.gray.opacity(0.15))
+                        .cornerRadius(10)
+                }
+                
+                // Solution 模式投票按钮已移除
                 
                 // 时间戳
                 Text(message.timestamp, style: .time)
@@ -110,29 +164,50 @@ struct MessageBubbleView: View {
                     .foregroundColor(.secondary)
             }
             
-            // 右侧空间（用户消息靠右）
-            if isUser {
-                Spacer(minLength: 60)
-            } else {
-                Spacer(minLength: 40)
+            // AI 消息额外右边空白
+            if !isUser {
+                Spacer()
             }
+            
+            // 右侧空白（10%）
+            Spacer()
+                .frame(width: containerWidth * 0.10)
         }
-        .frame(maxWidth: .infinity, alignment: isUser ? .trailing : .leading)
     }
     
-    // 头像视图
+    // Solution mode 已移除
+    
+    // voteButtonsView 和 eliminateAI 已删除
+    
+    // 用户反应处理
+    private func reactToMessage(_ reaction: UserReaction) {
+        guard let chatId = appState.selectedGroupChatId else { return }
+        appState.setMessageReaction(reaction, for: message.id, in: chatId)
+    }
+    
+    // 头像视图（带火焰效果）
     private var avatarView: some View {
-        ZStack {
-            Circle()
-                .fill(aiInstance?.color ?? .gray)
-                .frame(width: 36, height: 36)
+        let flameIntensity = calculateFlameIntensity()
+        
+        return ZStack {
+            if let ai = aiInstance {
+                AILogoView(aiType: ai.type, size: 28)
+            }
             
-            if let iconName = aiInstance?.type.iconName {
-                Image(systemName: iconName)
-                    .font(.system(size: 16))
-                    .foregroundColor(.white)
+            // 火焰效果（显示在头像上方）
+            if flameIntensity > 0 {
+                FlameView(intensity: flameIntensity)
+                    .offset(x: 12, y: -14)
             }
         }
+        .frame(width: 36, height: 36)
+    }
+    
+    // 计算该 AI 的火焰强度
+    private func calculateFlameIntensity() -> Int {
+        guard let ai = aiInstance,
+              let chat = appState.selectedGroupChat else { return 0 }
+        return ai.calculateFlameIntensity(in: chat)
     }
     
     // 消息类型标签
@@ -153,7 +228,6 @@ struct MessageBubbleView: View {
         switch message.messageType {
         case .analysis: return "Analysis"
         case .evaluation: return "Evaluation"
-        case .solution: return "Solution"
         default: return ""
         }
     }
@@ -162,7 +236,6 @@ struct MessageBubbleView: View {
         switch message.messageType {
         case .analysis: return .blue
         case .evaluation: return .orange
-        case .solution: return .green
         default: return .gray
         }
     }

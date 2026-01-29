@@ -12,20 +12,24 @@ class MessageRouter: ObservableObject {
     
     // MARK: - Broadcast Messages
     
-    /// 广播用户消息给群聊中的所有 AI
+    /// 广播用户消息给群聊中的所有 AI（流式响应）
+    /// - Parameters:
+    ///   - message: 用户消息
+    ///   - chat: 群聊
+    ///   - aiInstances: 所有 AI 实例
+    ///   - onResponse: 每个 AI 响应到达时的回调（先到先调用）
     func broadcastUserMessage(
         _ message: String,
         to chat: GroupChat,
-        aiInstances: [AIInstance]
-    ) async -> [AIResponse] {
+        aiInstances: [AIInstance],
+        onResponse: @escaping (AIResponse) async -> Void
+    ) async {
         
         let activeAIs = aiInstances.filter { 
             chat.activeMemberIds.contains($0.id) && !$0.isEliminated 
         }
         
-        var responses: [AIResponse] = []
-        
-        // 并行发送给所有 AI
+        // 并行发送给所有 AI，响应到达时立即回调
         await withTaskGroup(of: AIResponse?.self) { group in
             for ai in activeAIs {
                 group.addTask {
@@ -33,14 +37,13 @@ class MessageRouter: ObservableObject {
                 }
             }
             
+            // 先到先处理
             for await response in group {
                 if let response = response {
-                    responses.append(response)
+                    await onResponse(response)
                 }
             }
         }
-        
-        return responses
     }
     
     /// 让一个 AI 评价另一个 AI 的输出
@@ -99,9 +102,37 @@ class MessageRouter: ObservableObject {
         }
     }
     
-    /// 解析评价响应
+    /// 发送消息并流式获取响应（用于 1:1 聊天）
+    /// - Parameters:
+    ///   - message: 用户消息
+    ///   - ai: 目标 AI
+    ///   - onUpdate: 每次内容变化时的回调 (内容, 是否思考中, 是否完成)
+    func sendWithStreaming(
+        _ message: String,
+        to ai: AIInstance,
+        onUpdate: @escaping (String, Bool, Bool) -> Void
+    ) async {
+        do {
+            // 发送消息
+            try await sessionManager.sendMessage(message, to: ai)
+            
+            // 流式获取响应
+            try await sessionManager.streamResponse(
+                from: ai,
+                onUpdate: onUpdate,
+                stableSeconds: 4.0,
+                maxWait: 120.0
+            )
+        } catch {
+            print("❌ Error streaming from \(ai.name): \(error)")
+            await MainActor.run {
+                onUpdate("Error: \(error.localizedDescription)", false, true)
+            }
+        }
+    }
+    
+    /// 解析评价响应 - 使用关键词推断分数
     private func parseEvaluation(_ content: String, targetId: UUID) -> AIEvaluation {
-        var score = 5 // 默认分数
         var pros = ""
         var cons = ""
         
@@ -110,13 +141,7 @@ class MessageRouter: ObservableObject {
         for line in lines {
             let lineStr = String(line).trimmingCharacters(in: .whitespaces)
             
-            if lineStr.contains("评分") || lineStr.contains("分数") || lineStr.contains("Score") {
-                // 提取数字
-                let numbers = lineStr.filter { $0.isNumber }
-                if let parsed = Int(numbers), parsed >= 0, parsed <= 10 {
-                    score = parsed
-                }
-            } else if lineStr.contains("优点") || lineStr.contains("Pros") {
+            if lineStr.contains("优点") || lineStr.contains("Pros") {
                 pros = lineStr.replacingOccurrences(of: "优点：", with: "")
                                .replacingOccurrences(of: "优点:", with: "")
                                .trimmingCharacters(in: .whitespaces)
@@ -127,12 +152,74 @@ class MessageRouter: ObservableObject {
             }
         }
         
+        // 使用关键词推断分数
+        let score = inferScoreFromKeywords(content)
+        
         return AIEvaluation(
             targetId: targetId,
             score: score,
             pros: pros,
             cons: cons
         )
+    }
+    
+    /// 通过关键词推断评价分数 (0-10)
+    private func inferScoreFromKeywords(_ content: String) -> Int {
+        // 高分关键词 (9-10分)
+        let excellentKeywords = ["非常好", "非常棒", "很棒", "很好", "太棒了", "完美", "出色", "优秀", 
+                                  "excellent", "perfect", "amazing", "outstanding", "精彩", "准确"]
+        
+        // 中高分关键词 (7-8分)
+        let goodKeywords = ["不错", "好", "挺好", "可以", "正确", "有道理", "合理", "清晰",
+                            "good", "nice", "correct", "reasonable", "clear", "有帮助"]
+        
+        // 中等分关键词 (5-6分)
+        let okayKeywords = ["还可以", "一般", "还行", "尚可", "基本", "普通",
+                            "okay", "acceptable", "average", "so-so", "中规中矩"]
+        
+        // 低分关键词 (3-4分)
+        let poorKeywords = ["不太好", "不够", "有问题", "欠缺", "需要改进", "不足",
+                            "not good", "needs improvement", "lacking", "问题"]
+        
+        // 差评关键词 (1-2分)
+        let badKeywords = ["很差", "错误", "不对", "完全错误", "误导", "无用", "糟糕",
+                           "wrong", "incorrect", "bad", "terrible", "useless", "misleading"]
+        
+        let lowercased = content.lowercased()
+        
+        // 按优先级检测（先检测极端评价）
+        for keyword in badKeywords {
+            if lowercased.contains(keyword.lowercased()) {
+                return 2
+            }
+        }
+        
+        for keyword in excellentKeywords {
+            if lowercased.contains(keyword.lowercased()) {
+                return 9
+            }
+        }
+        
+        for keyword in poorKeywords {
+            if lowercased.contains(keyword.lowercased()) {
+                return 4
+            }
+        }
+        
+        for keyword in goodKeywords {
+            if lowercased.contains(keyword.lowercased()) {
+                return 8
+            }
+        }
+        
+        for keyword in okayKeywords {
+            if lowercased.contains(keyword.lowercased()) {
+                return 6
+            }
+        }
+        
+        // 默认中等分数
+        return 5
     }
 }
 

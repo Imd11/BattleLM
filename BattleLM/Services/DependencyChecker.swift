@@ -31,12 +31,22 @@ struct DependencyChecker {
         .gemini: Dependency(
             name: "Gemini CLI",
             command: "gemini",
-            installHint: "npm install -g @anthropic-ai/gemini-cli"
+            installHint: "npm install -g @google/gemini-cli"
         ),
         .codex: Dependency(
             name: "Codex CLI",
             command: "codex",
             installHint: "npm install -g @openai/codex"
+        ),
+        .qwen: Dependency(
+            name: "Qwen CLI",
+            command: "qwen",
+            installHint: "pip install qwen-cli"
+        ),
+        .kimi: Dependency(
+            name: "Kimi CLI",
+            command: "kimi",
+            installHint: "uv tool install kimi-cli"
         )
     ]
     

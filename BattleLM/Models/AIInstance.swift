@@ -3,7 +3,7 @@ import Foundation
 import SwiftUI
 
 /// AI 实例模型
-struct AIInstance: Identifiable, Codable, Hashable {
+struct AIInstance: Identifiable, Codable, Equatable, Hashable {
     let id: UUID
     let type: AIType
     var name: String
@@ -12,6 +12,17 @@ struct AIInstance: Identifiable, Codable, Hashable {
     var isActive: Bool
     var isEliminated: Bool
     var eliminationScore: Double
+    var messages: [Message] = []   // 1:1 对话消息历史
+    
+    // 手动实现 Hashable，只基于 id
+    func hash(into hasher: inout Hasher) {
+        hasher.combine(id)
+    }
+    
+    // 手动实现 Equatable，只基于 id
+    static func == (lhs: AIInstance, rhs: AIInstance) -> Bool {
+        lhs.id == rhs.id
+    }
     
     init(type: AIType, name: String? = nil, workingDirectory: String = "~") {
         self.id = UUID()
@@ -22,6 +33,7 @@ struct AIInstance: Identifiable, Codable, Hashable {
         self.isActive = false
         self.isEliminated = false
         self.eliminationScore = 0
+        self.messages = []
     }
     
     /// 获取 AI 的颜色

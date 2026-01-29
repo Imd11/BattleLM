@@ -4,24 +4,42 @@ import SwiftUI
 /// 消息输入框视图
 struct MessageInputView: View {
     @Binding var inputText: String
+    @Binding var selectedMode: ChatMode
     var onSend: () -> Void
     
     @FocusState private var isFocused: Bool
     
     var body: some View {
         HStack(spacing: 12) {
-            // 附件按钮
-            Button {
-                // TODO: 添加附件
+            // 模式选择器
+            Menu {
+                ForEach(ChatMode.allCases) { mode in
+                    Button {
+                        selectedMode = mode
+                    } label: {
+                        Label(mode.displayName, systemImage: mode.iconName)
+                    }
+                }
             } label: {
-                Image(systemName: "paperclip")
-                    .font(.title3)
+                HStack(spacing: 6) {
+                    Image(systemName: selectedMode.iconName)
+                        .font(.caption)
+                    Text(selectedMode.displayName)
+                        .font(.caption)
+                        .fontWeight(.medium)
+                    Image(systemName: "chevron.up.chevron.down")
+                        .font(.caption2)
+                }
+                .padding(.horizontal, 10)
+                .padding(.vertical, 6)
+                .background(modeColor.opacity(0.2))
+                .foregroundColor(modeColor)
+                .cornerRadius(8)
             }
-            .buttonStyle(.plain)
-            .foregroundColor(.secondary)
+            .menuStyle(.borderlessButton)
             
             // 输入框
-            TextField("Type your question...", text: $inputText, axis: .vertical)
+            TextField(modePlaceholder, text: $inputText, axis: .vertical)
                 .textFieldStyle(.plain)
                 .lineLimit(1...5)
                 .focused($isFocused)
@@ -31,13 +49,17 @@ struct MessageInputView: View {
                     }
                 }
             
-            // 发送按钮
+            // 发送按钮 - Let's Battle!
             Button {
                 onSend()
             } label: {
-                Image(systemName: "arrow.up.circle.fill")
-                    .font(.title2)
-                    .foregroundColor(inputText.isEmpty ? .gray : .accentColor)
+                Text("Let's Battle")
+                    .fontWeight(.semibold)
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 8)
+                    .background(inputText.isEmpty ? Color.gray.opacity(0.3) : Color.accentColor)
+                    .foregroundColor(inputText.isEmpty ? .gray : .white)
+                    .cornerRadius(8)
             }
             .buttonStyle(.plain)
             .disabled(inputText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
@@ -46,11 +68,30 @@ struct MessageInputView: View {
         .padding()
         .background(Color(.windowBackgroundColor))
     }
+    
+    private var modeColor: Color {
+        switch selectedMode {
+        case .discussion:
+            return .blue
+        case .qna:
+            return .green
+        }
+    }
+    
+    private var modePlaceholder: String {
+        switch selectedMode {
+        case .discussion:
+            return "Describe the problem for AI discussion..."
+        case .qna:
+            return "Ask all AIs a question..."
+        }
+    }
 }
 
 #Preview {
-    MessageInputView(inputText: .constant("")) {
+    MessageInputView(inputText: .constant(""), selectedMode: .constant(.discussion)) {
         print("Send")
     }
     .frame(width: 500)
 }
+

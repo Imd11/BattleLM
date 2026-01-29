@@ -4,6 +4,8 @@ import SwiftUI
 /// 侧边栏视图
 struct SidebarView: View {
     @EnvironmentObject var appState: AppState
+    @State private var addAIHovered: Bool = false
+    @State private var createGroupHovered: Bool = false
     
     var body: some View {
         VStack(spacing: 0) {
@@ -31,6 +33,13 @@ struct SidebarView: View {
                             .onTapGesture {
                                 appState.selectAI(ai)
                             }
+                            .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+                                Button(role: .destructive) {
+                                    deleteAI(ai)
+                                } label: {
+                                    Label("Delete", systemImage: "trash")
+                                }
+                            }
                     }
                     
                     Button {
@@ -38,8 +47,18 @@ struct SidebarView: View {
                     } label: {
                         Label("Add AI", systemImage: "plus.circle")
                             .foregroundColor(.accentColor)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(.vertical, 6)
+                            .padding(.horizontal, 8)
+                            .background(
+                                RoundedRectangle(cornerRadius: 6)
+                                    .fill(addAIHovered ? Color.accentColor.opacity(0.1) : Color.clear)
+                            )
                     }
                     .buttonStyle(.plain)
+                    .onHover { hovering in
+                        addAIHovered = hovering
+                    }
                 }
                 
                 // 群聊区域
@@ -56,10 +75,20 @@ struct SidebarView: View {
                     Button {
                         appState.showCreateGroupSheet = true
                     } label: {
-                        Label("Create Chat", systemImage: "plus.circle")
+                        Label("Create Group", systemImage: "plus.circle")
                             .foregroundColor(.accentColor)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(.vertical, 6)
+                            .padding(.horizontal, 8)
+                            .background(
+                                RoundedRectangle(cornerRadius: 6)
+                                    .fill(createGroupHovered ? Color.accentColor.opacity(0.1) : Color.clear)
+                            )
                     }
                     .buttonStyle(.plain)
+                    .onHover { hovering in
+                        createGroupHovered = hovering
+                    }
                 }
             }
             .listStyle(.sidebar)
@@ -74,21 +103,27 @@ struct SidebarView: View {
                     Image(systemName: "gear")
                 }
                 .buttonStyle(.plain)
+                .help("Settings (⌘,)")
                 
                 Spacer()
-                
-                Button {
-                    appState.showTerminalPanel.toggle()
-                } label: {
-                    Image(systemName: appState.showTerminalPanel ? "sidebar.right" : "sidebar.right")
-                        .foregroundColor(appState.showTerminalPanel ? .accentColor : .secondary)
-                }
-                .buttonStyle(.plain)
-                .help("Toggle Terminal Panel")
             }
             .padding()
         }
         .background(Color(.windowBackgroundColor))
+    }
+    
+    /// 删除 AI 实例
+    private func deleteAI(_ ai: AIInstance) {
+        Task {
+            // 先停止会话
+            if ai.isActive {
+                try? await SessionManager.shared.stopSession(for: ai)
+            }
+            // 从 appState 中移除
+            await MainActor.run {
+                appState.removeAI(ai)
+            }
+        }
     }
 }
 
@@ -96,6 +131,7 @@ struct SidebarView: View {
 struct AIInstanceRow: View {
     let ai: AIInstance
     var isSelected: Bool = false
+    @State private var isHovered: Bool = false
     
     var body: some View {
         HStack(spacing: 10) {
@@ -104,9 +140,8 @@ struct AIInstanceRow: View {
                 .fill(ai.isActive ? .green : .gray)
                 .frame(width: 8, height: 8)
             
-            // 图标
-            Image(systemName: ai.type.iconName)
-                .foregroundColor(ai.color)
+            // AI Logo
+            AILogoView(aiType: ai.type, size: 18)
             
             // 名称和路径
             VStack(alignment: .leading, spacing: 2) {
@@ -133,8 +168,14 @@ struct AIInstanceRow: View {
             }
         }
         .padding(.vertical, 4)
-        .background(isSelected ? Color.accentColor.opacity(0.15) : Color.clear)
-        .cornerRadius(6)
+        .padding(.horizontal, 6)
+        .background(
+            RoundedRectangle(cornerRadius: 6)
+                .fill(isSelected ? Color.accentColor.opacity(0.15) : (isHovered ? Color.primary.opacity(0.08) : Color.clear))
+        )
+        .onHover { hovering in
+            isHovered = hovering
+        }
     }
 }
 
@@ -143,12 +184,14 @@ struct GroupChatRow: View {
     let chat: GroupChat
     var isSelected: Bool = false
     @EnvironmentObject var appState: AppState
+    @State private var isHovered: Bool = false
     
     var body: some View {
         HStack(spacing: 10) {
-            // 图标
-            Image(systemName: "bubble.left.and.bubble.right")
-                .foregroundColor(.accentColor)
+            // 模式图标（移到左侧，放大）
+            Image(systemName: chat.mode.iconName)
+                .font(.title3)
+                .foregroundColor(.secondary)
             
             VStack(alignment: .leading, spacing: 2) {
                 Text(chat.name)
@@ -158,13 +201,16 @@ struct GroupChatRow: View {
                 HStack(spacing: -6) {
                     ForEach(chat.memberIds.prefix(3), id: \.self) { memberId in
                         if let ai = appState.aiInstance(for: memberId) {
-                            Circle()
-                                .fill(ai.color)
-                                .frame(width: 16, height: 16)
-                                .overlay(
-                                    Circle()
-                                        .stroke(Color(.windowBackgroundColor), lineWidth: 1)
-                                )
+                            ZStack {
+                                Circle()
+                                    .fill(Color(.windowBackgroundColor))
+                                    .frame(width: 16, height: 16)
+                                AILogoView(aiType: ai.type, size: 12)
+                            }
+                            .overlay(
+                                Circle()
+                                    .stroke(Color(.windowBackgroundColor), lineWidth: 1)
+                            )
                         }
                     }
                     
@@ -177,13 +223,16 @@ struct GroupChatRow: View {
             }
             
             Spacer()
-            
-            // 模式指示
-            Image(systemName: chat.mode.iconName)
-                .font(.caption)
-                .foregroundColor(.secondary)
         }
         .padding(.vertical, 4)
+        .padding(.horizontal, 6)
+        .background(
+            RoundedRectangle(cornerRadius: 6)
+                .fill(isSelected ? Color.accentColor.opacity(0.15) : (isHovered ? Color.primary.opacity(0.08) : Color.clear))
+        )
+        .onHover { hovering in
+            isHovered = hovering
+        }
     }
 }
 
