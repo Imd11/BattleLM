@@ -37,6 +37,15 @@ class AppState: ObservableObject {
     @Published var showAddAISheet: Bool = false
     @Published var showCreateGroupSheet: Bool = false
     @Published var showSettingsSheet: Bool = false
+    @Published var showPairingSheet: Bool = false
+
+    // MARK: - CLI Preflight
+
+    /// 各 AI CLI 的可用性缓存（启动后预热，Add AI Sheet 直接读缓存避免卡顿）
+    @Published var cliStatusCache: [AIType: CLIStatus] = [:]
+
+    /// 是否正在进行全量检测
+    @Published var isDetectingCLI: Bool = false
     
     // MARK: - Computed Properties
     
@@ -59,6 +68,46 @@ class AppState: ObservableObject {
     
     init() {
         // 启动时为空，不加载示例数据
+    }
+
+    /// 启动时预热：并行检测所有 AI CLI 状态，避免用户在 Add AI Sheet 中点击卡片时才卡顿等待。
+    func startCLIDetection(force: Bool = false) {
+        if !force, isDetectingCLI { return }
+        isDetectingCLI = true
+
+        Task.detached(priority: .utility) { [weak self] in
+            guard let self else { return }
+
+            await withTaskGroup(of: (AIType, CLIStatus).self) { group in
+                for type in AIType.allCases {
+                    group.addTask {
+                        let status = await DependencyChecker.checkAI(type)
+                        return (type, status)
+                    }
+                }
+
+                for await (type, status) in group {
+                    await MainActor.run {
+                        self.cliStatusCache[type] = status
+                    }
+                }
+            }
+
+            await MainActor.run {
+                self.isDetectingCLI = false
+            }
+        }
+    }
+
+    /// 手动刷新某个 AI 的 CLI 状态（例如用户刚安装完）
+    func refreshCLIStatus(for type: AIType) {
+        Task.detached(priority: .utility) { [weak self] in
+            guard let self else { return }
+            let status = await DependencyChecker.checkAI(type)
+            await MainActor.run {
+                self.cliStatusCache[type] = status
+            }
+        }
     }
     
     // MARK: - AI Instance Methods
@@ -94,41 +143,51 @@ class AppState: ObservableObject {
     func aiInstance(for id: UUID) -> AIInstance? {
         aiInstances.first { $0.id == id }
     }
+
+    /// 通过整体替换触发 SwiftUI 刷新（避免就地修改导致 UI 不更新）。
+    /// - Note: 如果调用发生在非主线程，会自动切回主线程执行。
+    private func updateAIInstances(_ mutate: @escaping (inout [AIInstance]) -> Void) {
+        let apply = { [weak self] in
+            guard let self else { return }
+            var updated = self.aiInstances
+            mutate(&updated)
+            self.aiInstances = updated
+        }
+
+        if Thread.isMainThread {
+            apply()
+        } else {
+            DispatchQueue.main.async(execute: apply)
+        }
+    }
+
+    /// 更新单个 AI 实例（通过整体替换触发 SwiftUI 刷新）
+    func updateAIInstance(_ aiId: UUID, mutate: @escaping (inout AIInstance) -> Void) {
+        updateAIInstances { instances in
+            guard let index = instances.firstIndex(where: { $0.id == aiId }) else { return }
+            mutate(&instances[index])
+        }
+    }
+
+    /// 设置 AI 活跃状态（避免就地修改导致 UI 不刷新）
+    func setAIActive(_ isActive: Bool, for aiId: UUID) {
+        updateAIInstance(aiId) { ai in
+            ai.isActive = isActive
+        }
+    }
     
     /// 添加消息到 AI 实例（1:1 对话）
     func appendMessage(_ message: Message, to aiId: UUID) {
-        if let index = aiInstances.firstIndex(where: { $0.id == aiId }) {
-            aiInstances[index].messages.append(message)
+        updateAIInstance(aiId) { ai in
+            ai.messages.append(message)
         }
     }
     
     /// 更新 AI 消息内容（用于流式输出）
     func updateMessage(_ messageId: UUID, content: String, aiId: UUID) {
-        if let aiIndex = aiInstances.firstIndex(where: { $0.id == aiId }),
-           let msgIndex = aiInstances[aiIndex].messages.firstIndex(where: { $0.id == messageId }) {
-            // 创建新消息保留其他属性，只更新 content
-            let oldMsg = aiInstances[aiIndex].messages[msgIndex]
-            let newMsg = Message(
-                senderId: oldMsg.senderId,
-                senderType: oldMsg.senderType,
-                senderName: oldMsg.senderName,
-                content: content,
-                roundNumber: oldMsg.roundNumber,
-                messageType: oldMsg.messageType,
-                userReaction: oldMsg.userReaction
-            )
-            // 保持原有 ID
-            aiInstances[aiIndex].messages[msgIndex] = Message(
-                id: oldMsg.id,
-                senderId: oldMsg.senderId,
-                senderType: oldMsg.senderType,
-                senderName: oldMsg.senderName,
-                content: content,
-                timestamp: oldMsg.timestamp,
-                roundNumber: oldMsg.roundNumber,
-                messageType: oldMsg.messageType,
-                userReaction: oldMsg.userReaction
-            )
+        updateAIInstance(aiId) { ai in
+            guard let index = ai.messages.firstIndex(where: { $0.id == messageId }) else { return }
+            ai.messages[index].content = content
         }
     }
     
@@ -200,7 +259,7 @@ class AppState: ObservableObject {
                 if let aiIndex = aiInstances.firstIndex(where: { $0.id == ai.id }) {
                     do {
                         try await SessionManager.shared.startSession(for: aiInstances[aiIndex])
-                        aiInstances[aiIndex].isActive = true
+                        setAIActive(true, for: ai.id)
                     } catch {
                         print("❌ Failed to start session for \(ai.name): \(error)")
                         let errorMsg = Message.systemMessage("⚠️ Failed to start \(ai.name)")
@@ -296,7 +355,7 @@ class AppState: ObservableObject {
                 if let aiIndex = aiInstances.firstIndex(where: { $0.id == ai.id }) {
                     do {
                         try await SessionManager.shared.startSession(for: aiInstances[aiIndex])
-                        aiInstances[aiIndex].isActive = true
+                        setAIActive(true, for: ai.id)
                     } catch {
                         print("❌ Failed to start session for \(ai.name): \(error)")
                         let errorMsg = Message.systemMessage("⚠️ Failed to start \(ai.name)")
@@ -393,7 +452,7 @@ class AppState: ObservableObject {
         case .qwen:
             return "Based on my analysis of the problem, I recommend a systematic approach to identify the root cause and implement a robust solution."
         case .kimi:
-            return "我来分析一下这个问题。从技术角度来看，我们需要深入了解需求和实现细节，找到最优解决方案。"
+            return "Let me analyze this problem. From a technical perspective, we need to deeply understand the requirements and implementation details to find the optimal solution."
         }
     }
     

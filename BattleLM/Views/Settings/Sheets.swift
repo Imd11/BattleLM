@@ -8,12 +8,17 @@ struct AddAISheet: View {
     @Environment(\.dismiss) var dismiss
     
     @State private var selectedType: AIType = .claude
-    @State private var customName: String = ""
+    @State private var customName: String = "Claude"  // 默认填充第一个类型的名称
     @State private var workingDirectory: String = ""
     @State private var showFolderPicker: Bool = false
-    @State private var cliAvailable: Bool? = nil
     @State private var isCardContainerHovered: Bool = false
     @State private var scrollOffset: CGFloat = 0
+    @State private var showDuplicateAlert: Bool = false
+    @State private var showInstallHelp: Bool = false
+
+    private var selectedCLIStatus: CLIStatus? {
+        appState.cliStatusCache[selectedType]
+    }
     
     var body: some View {
         VStack(spacing: 20) {
@@ -37,10 +42,8 @@ struct AddAISheet: View {
                                         isSelected: selectedType == type
                                     ) {
                                         selectedType = type
-                                        if customName.isEmpty {
-                                            customName = type.displayName
-                                        }
-                                        checkCLI()
+                                        customName = type.displayName  // 始终更新名称
+                                        showInstallHelp = false
                                     }
                                     .id(type.id)
                                 }
@@ -99,13 +102,70 @@ struct AddAISheet: View {
                 }
                 
                 // CLI 状态提示
-                if let available = cliAvailable {
-                    HStack {
-                        Image(systemName: available ? "checkmark.circle.fill" : "xmark.circle.fill")
-                            .foregroundColor(available ? .green : .red)
-                        Text(available ? "\(selectedType.displayName) CLI is installed" : "\(selectedType.displayName) CLI not found")
+                if let status = selectedCLIStatus {
+                    VStack(alignment: .leading, spacing: 8) {
+                        HStack {
+                            Image(systemName: status.iconName)
+                                .foregroundColor(statusColor(status))
+                            Text("\(selectedType.displayName) CLI: \(status.displayText)")
+                                .font(.caption)
+                                .foregroundColor(statusColor(status))
+                            
+                            Spacer()
+
+                            Button {
+                                appState.refreshCLIStatus(for: selectedType)
+                            } label: {
+                                Image(systemName: "arrow.clockwise")
+                                    .font(.caption)
+                                    .foregroundColor(.secondary)
+                            }
+                            .buttonStyle(.plain)
+                            .help("Re-check CLI")
+                            
+                            if status == .notInstalled || status == .broken {
+                                Button {
+                                    showInstallHelp.toggle()
+                                } label: {
+                                    Text(showInstallHelp ? "Hide" : "How to fix")
+                                        .font(.caption)
+                                }
+                                .buttonStyle(.link)
+                            }
+                        }
+                        
+                        // 安装指令
+                        if showInstallHelp, (status == .notInstalled || status == .broken),
+                           let dep = DependencyChecker.aiCLIs[selectedType] {
+                            VStack(alignment: .leading, spacing: 8) {
+                                Text(status == .broken ? "Fix:" : "Installation:")
+                                    .font(.caption)
+                                    .fontWeight(.semibold)
+                                
+                                Text(dep.installHint)
+                                    .font(.system(.caption, design: .monospaced))
+                                    .padding(8)
+                                    .background(Color.gray.opacity(0.1))
+                                    .cornerRadius(6)
+                                    .textSelection(.enabled)
+                                
+                                if let urlString = dep.installURL,
+                                   let url = URL(string: urlString) {
+                                    Link("📖 Official Documentation", destination: url)
+                                        .font(.caption)
+                                }
+                            }
+                            .padding(.top, 4)
+                        }
+                    }
+                } else {
+                    // 未检测完成/暂无缓存：不阻塞 UI，只显示正在检测
+                    HStack(spacing: 8) {
+                        ProgressView()
+                            .scaleEffect(0.8)
+                        Text("Checking \(selectedType.displayName) CLI...")
                             .font(.caption)
-                            .foregroundColor(available ? .green : .red)
+                            .foregroundColor(.secondary)
                     }
                 }
             }
@@ -151,6 +211,15 @@ struct AddAISheet: View {
                 Spacer()
                 
                 Button("Add") {
+                    // 检查名称是否重复
+                    let finalName = customName.isEmpty ? selectedType.displayName : customName
+                    let isDuplicate = appState.aiInstances.contains { $0.name == finalName }
+                    
+                    if isDuplicate {
+                        showDuplicateAlert = true
+                        return
+                    }
+                    
                     let newAI = appState.addAI(
                         type: selectedType,
                         name: customName.isEmpty ? nil : customName,
@@ -163,9 +232,7 @@ struct AddAISheet: View {
                             do {
                                 try await SessionManager.shared.startSession(for: ai)
                                 await MainActor.run {
-                                    if let index = appState.aiInstances.firstIndex(where: { $0.id == ai.id }) {
-                                        appState.aiInstances[index].isActive = true
-                                    }
+                                    appState.setAIActive(true, for: ai.id)
                                 }
                             } catch {
                                 print("Failed to start session: \(error)")
@@ -177,11 +244,16 @@ struct AddAISheet: View {
                 }
                 .keyboardShortcut(.defaultAction)
                 .buttonStyle(.borderedProminent)
-                .disabled(workingDirectory.isEmpty)
+                .disabled(workingDirectory.isEmpty || selectedCLIStatus == nil || selectedCLIStatus == .notInstalled || selectedCLIStatus == .broken)
             }
         }
         .padding(24)
         .frame(width: 500, height: 450)
+        .alert("Name Already Exists", isPresented: $showDuplicateAlert) {
+            Button("OK", role: .cancel) { }
+        } message: {
+            Text("An AI instance with the name \"\(customName.isEmpty ? selectedType.displayName : customName)\" already exists. Please choose a different name.")
+        }
         .fileImporter(
             isPresented: $showFolderPicker,
             allowedContentTypes: [.folder],
@@ -192,16 +264,17 @@ struct AddAISheet: View {
             }
         }
         .onAppear {
-            checkCLI()
+            // 预热检测（幂等，不会重复执行）
+            appState.startCLIDetection()
         }
     }
     
-    private func checkCLI() {
-        Task {
-            let available = await DependencyChecker.checkAI(selectedType)
-            await MainActor.run {
-                cliAvailable = available
-            }
+    private func statusColor(_ status: CLIStatus) -> Color {
+        switch status {
+        case .notInstalled: return .red
+        case .broken: return .red
+        case .installed: return .orange
+        case .ready: return .green
         }
     }
 }
@@ -458,6 +531,13 @@ struct SettingsSheet: View {
             }
         }
         .frame(width: 650, height: 500)
+        .onChange(of: colorScheme) { _ in
+            // 当系统 colorScheme 变化时（用户选择"跟随系统"模式后，系统主题切换）
+            // 需要同步更新终端主题
+            if appState.appAppearance == .system {
+                updateTerminalThemeIfNeeded()
+            }
+        }
     }
     
     // MARK: - Appearance Tab
@@ -568,9 +648,20 @@ struct SettingsSheet: View {
     }
     
     private func updateTerminalThemeIfNeeded() {
-        let themes = availableThemes
-        if !themes.contains(where: { $0.id == appState.terminalTheme.id }) {
-            appState.terminalTheme = themes.first ?? .default
+        // 当 App 主题切换时，强制重置终端主题为对应模式的默认主题
+        let shouldUseDark: Bool
+        switch appState.appAppearance {
+        case .dark:
+            shouldUseDark = true
+        case .light:
+            shouldUseDark = false
+        case .system:
+            shouldUseDark = colorScheme == .dark
+        }
+        
+        // 如果当前主题的明暗模式与新 App 主题不匹配，重置为默认
+        if appState.terminalTheme.isDark != shouldUseDark {
+            appState.terminalTheme = shouldUseDark ? .defaultDark : .defaultLight
         }
     }
 }

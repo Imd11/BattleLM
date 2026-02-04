@@ -6,6 +6,7 @@ import WebKit
 struct XtermTerminalView: NSViewRepresentable {
     let command: String
     let args: [String]
+    let theme: TerminalTheme
     @Binding var isConnected: Bool
     var onExit: ((Int32) -> Void)?
     
@@ -65,7 +66,19 @@ struct XtermTerminalView: NSViewRepresentable {
     }
     
     func updateNSView(_ nsView: WKWebView, context: Context) {
-        // 更新时不需要操作
+        // 当主题变化时，更新 xterm.js 主题
+        let themeDict: [String: String] = [
+            "background": theme.backgroundColor.hex,
+            "foreground": theme.textColor.hex,
+            "cursor": theme.promptColor.hex,
+            "selection": theme.borderColor.hex
+        ]
+        
+        if let jsonData = try? JSONSerialization.data(withJSONObject: themeDict),
+           let jsonString = String(data: jsonData, encoding: .utf8) {
+            let escaped = jsonString.replacingOccurrences(of: "'", with: "\\'")
+            nsView.evaluateJavaScript("window.setTheme && window.setTheme('\(escaped)')") { _, _ in }
+        }
     }
     
     func makeCoordinator() -> Coordinator {
@@ -206,6 +219,7 @@ private struct TerminalDimensions: Codable {
     XtermTerminalView(
         command: "/bin/zsh",
         args: [],
+        theme: .default,
         isConnected: .constant(true)
     )
     .frame(width: 600, height: 400)

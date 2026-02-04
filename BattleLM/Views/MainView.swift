@@ -5,7 +5,9 @@ import Combine
 /// 主视图 - 三栏布局
 struct MainView: View {
     @EnvironmentObject var appState: AppState
+    @Environment(\.colorScheme) var colorScheme
     @State private var terminalWidth: CGFloat = 550
+
     
     private let minTerminalWidth: CGFloat = 550
     private let maxTerminalWidth: CGFloat = 600
@@ -64,8 +66,14 @@ struct MainView: View {
         .sheet(isPresented: $appState.showSettingsSheet) {
             SettingsSheet()
         }
+        .sheet(isPresented: $appState.showPairingSheet) {
+            PairingQRView()
+        }
         .toolbar {
-            // 右侧终端面板切换按钮（类似 Xcode Inspector）
+            // 终端面板切换按钮 - 窗口右上角
+            ToolbarItem(placement: .primaryAction) {
+                Spacer()
+            }
             ToolbarItem(placement: .primaryAction) {
                 Button {
                     withAnimation(.easeInOut(duration: 0.2)) {
@@ -77,6 +85,14 @@ struct MainView: View {
                         .foregroundColor(appState.showTerminalPanel ? .accentColor : .secondary)
                 }
                 .help(appState.showTerminalPanel ? "Hide Terminal (⌘T)" : "Show Terminal (⌘T)")
+            }
+        }
+        .onChange(of: colorScheme) { newScheme in
+            // 当系统 colorScheme 变化时，同步更新终端主题（仅在"跟随系统"模式下）
+            guard appState.appAppearance == .system else { return }
+            let shouldUseDark = newScheme == .dark
+            if appState.terminalTheme.isDark != shouldUseDark {
+                appState.terminalTheme = shouldUseDark ? .defaultDark : .defaultLight
             }
         }
     }
@@ -124,7 +140,7 @@ struct SingleTerminalView: View {
     @State private var terminalOutput: String = ""
     @State private var inputText: String = ""
     @State private var isSending: Bool = false
-    @State private var isInteractiveMode: Bool = false  // 双模式切换
+    @State private var isInteractiveMode: Bool = true  // 默认显示 Interactive 模式
     @State private var isConnected: Bool = false
     
     // 每秒刷新的定时器
@@ -191,6 +207,7 @@ struct SingleTerminalView: View {
                 XtermTerminalView(
                     command: "/opt/homebrew/bin/tmux",
                     args: ["-L", "battlelm", "attach", "-t", ai.tmuxSession],
+                    theme: appState.terminalTheme,
                     isConnected: $isConnected,
                     onExit: { _ in
                         // 退出时自动切回 Snapshot 模式
@@ -204,7 +221,7 @@ struct SingleTerminalView: View {
                 ScrollView {
                     VStack(alignment: .leading, spacing: 2) {
                         if ai.isActive {
-                            ForEach(terminalLines, id: \.self) { line in
+                            ForEach(Array(terminalLines.enumerated()), id: \.offset) { _, line in
                                 coloredTerminalLine(line)
                                     .fixedSize(horizontal: false, vertical: true)
                             }
@@ -364,9 +381,10 @@ struct EmptyStateView: View {
     
     var body: some View {
         VStack(spacing: 20) {
-            Image(systemName: "bolt.shield")
-                .font(.system(size: 64))
-                .foregroundColor(.secondary)
+            Image("BattleLogo")
+                .resizable()
+                .scaledToFit()
+                .frame(width: 80, height: 80)
             
             Text("Welcome to BattleLM")
                 .font(.title)

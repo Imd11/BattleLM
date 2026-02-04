@@ -9,6 +9,11 @@ struct BattleLMApp: App {
         WindowGroup {
             MainView()
                 .environmentObject(appState)
+                .task {
+                    // 启动即预热 CLI 检测：避免 Add AI Sheet 交互卡顿
+                    appState.startCLIDetection()
+                    RemoteHostServer.shared.bind(appState: appState)
+                }
         }
         .windowStyle(.hiddenTitleBar)
         .commands {

@@ -1,1 +1,34 @@
-DerivedData
+# Xcode
+.DS_Store
+*.xcuserstate
+xcuserdata/
+DerivedData/
+DerivedData-*/
+.DerivedData/
+.build/
+.swiftpm/
+
+# Build artifacts
+build/
+*.app
+*.ipa
+*.dSYM.zip
+*.dSYM
+
+# Temporary/cache
+.tmp/
+.cache/
+.home/
+.sandbox_home/
+
+# IDE
+.idea/
+*.swp
+*.swo
+*~
+
+# Secrets (never commit)
+*.pem
+*.p12
+*.key
+secrets/

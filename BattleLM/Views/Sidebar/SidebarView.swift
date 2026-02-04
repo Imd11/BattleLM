@@ -1,7 +1,7 @@
 // BattleLM/Views/Sidebar/SidebarView.swift
 import SwiftUI
 
-/// 侧边栏视图
+/// Sidebar View
 struct SidebarView: View {
     @EnvironmentObject var appState: AppState
     @State private var addAIHovered: Bool = false
@@ -11,9 +11,10 @@ struct SidebarView: View {
         VStack(spacing: 0) {
             // Logo
             HStack {
-                Image(systemName: "bolt.shield")
-                    .font(.title2)
-                    .foregroundColor(.accentColor)
+                Image("BattleLogo")
+                    .resizable()
+                    .scaledToFit()
+                    .frame(width: 28, height: 28)
                 Text("BattleLM")
                     .font(.title2)
                     .fontWeight(.bold)
@@ -23,9 +24,9 @@ struct SidebarView: View {
             
             Divider()
             
-            // 内容列表
+            // Content list
             List {
-                // AI 实例区域
+                // AI instances section
                 Section("AI Instances") {
                     ForEach(appState.aiInstances) { ai in
                         AIInstanceRow(ai: ai, isSelected: appState.selectedAIId == ai.id)
@@ -61,14 +62,14 @@ struct SidebarView: View {
                     }
                 }
                 
-                // 群聊区域
+                // Group chats section
                 Section("Group Chats") {
                     ForEach(appState.groupChats) { chat in
                         GroupChatRow(chat: chat, isSelected: appState.selectedGroupChatId == chat.id)
                             .contentShape(Rectangle())
                             .onTapGesture {
                                 appState.selectedGroupChatId = chat.id
-                                appState.selectedAIId = nil  // 清除 AI 选择
+                                appState.selectedAIId = nil  // Clear AI selection
                             }
                     }
                     
@@ -95,15 +96,38 @@ struct SidebarView: View {
             
             Divider()
             
-            // 底部设置
-            HStack {
+            // Bottom settings
+            HStack(spacing: 12) {
                 Button {
                     appState.showSettingsSheet = true
                 } label: {
-                    Image(systemName: "gear")
+                    Image(systemName: "gearshape.fill")
+                        .font(.system(size: 16))
                 }
                 .buttonStyle(.plain)
                 .help("Settings (⌘,)")
+                
+                Button {
+                    appState.showPairingSheet = true
+                } label: {
+                    Image(systemName: "iphone.radiowaves.left.and.right")
+                        .font(.system(size: 16))
+                }
+                .buttonStyle(.plain)
+                .help("Device Pairing")
+                
+                Button {
+                    if let url = URL(string: "https://discord.gg/4tnTSg3ZGy") {
+                        NSWorkspace.shared.open(url)
+                    }
+                } label: {
+                    Image("DiscordLogo")
+                        .resizable()
+                        .scaledToFit()
+                        .frame(width: 16, height: 16)
+                }
+                .buttonStyle(.plain)
+                .help("Join our Discord")
                 
                 Spacer()
             }
@@ -112,14 +136,14 @@ struct SidebarView: View {
         .background(Color(.windowBackgroundColor))
     }
     
-    /// 删除 AI 实例
+    /// Delete AI instance
     private func deleteAI(_ ai: AIInstance) {
         Task {
-            // 先停止会话
+            // Stop session first
             if ai.isActive {
                 try? await SessionManager.shared.stopSession(for: ai)
             }
-            // 从 appState 中移除
+            // Remove from appState
             await MainActor.run {
                 appState.removeAI(ai)
             }
@@ -127,23 +151,28 @@ struct SidebarView: View {
     }
 }
 
-/// AI 实例行
+/// AI Instance Row
 struct AIInstanceRow: View {
     let ai: AIInstance
     var isSelected: Bool = false
     @State private var isHovered: Bool = false
+    @ObservedObject private var sessionManager = SessionManager.shared
+
+    private var isSessionRunning: Bool {
+        sessionManager.sessionStatus[ai.id] == .running
+    }
     
     var body: some View {
         HStack(spacing: 10) {
-            // 状态指示灯
+            // Status indicator
             Circle()
-                .fill(ai.isActive ? .green : .gray)
+                .fill(isSessionRunning ? .green : .gray)
                 .frame(width: 8, height: 8)
             
             // AI Logo
             AILogoView(aiType: ai.type, size: 18)
             
-            // 名称和路径
+            // Name and path
             VStack(alignment: .leading, spacing: 2) {
                 Text(ai.name)
                     .fontWeight(isSelected ? .semibold : .regular)
@@ -156,7 +185,7 @@ struct AIInstanceRow: View {
             
             Spacer()
             
-            // 淘汰标记
+            // Elimination mark
             if ai.isEliminated {
                 Text("OUT")
                     .font(.caption2)
@@ -179,7 +208,7 @@ struct AIInstanceRow: View {
     }
 }
 
-/// 群聊行
+/// Group Chat Row
 struct GroupChatRow: View {
     let chat: GroupChat
     var isSelected: Bool = false
@@ -188,7 +217,7 @@ struct GroupChatRow: View {
     
     var body: some View {
         HStack(spacing: 10) {
-            // 模式图标（移到左侧，放大）
+            // Mode icon (moved to left, enlarged)
             Image(systemName: chat.mode.iconName)
                 .font(.title3)
                 .foregroundColor(.secondary)
@@ -197,7 +226,7 @@ struct GroupChatRow: View {
                 Text(chat.name)
                     .fontWeight(isSelected ? .semibold : .medium)
                 
-                // 成员头像
+                // Member avatars
                 HStack(spacing: -6) {
                     ForEach(chat.memberIds.prefix(3), id: \.self) { memberId in
                         if let ai = appState.aiInstance(for: memberId) {

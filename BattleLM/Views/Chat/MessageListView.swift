@@ -190,17 +190,19 @@ struct MessageBubbleView: View {
         let flameIntensity = calculateFlameIntensity()
         
         return ZStack {
-            if let ai = aiInstance {
-                AILogoView(aiType: ai.type, size: 28)
+            // 火焰粒子层（在头像下方）
+            if flameIntensity > 0 {
+                FlameParticleView(intensity: flameIntensity, avatarSize: 28)
+                    .offset(x: 0, y: 0)
             }
             
-            // 火焰效果（显示在头像上方）
-            if flameIntensity > 0 {
-                FlameView(intensity: flameIntensity)
-                    .offset(x: 12, y: -14)
+            // AI 头像
+            if let ai = aiInstance {
+                AILogoView(aiType: ai.type, size: 28)
+                    .clipShape(Circle())
             }
         }
-        .frame(width: 36, height: 36)
+        .frame(width: 68, height: 68)  // 加大框架以容纳火焰
     }
     
     // 计算该 AI 的火焰强度

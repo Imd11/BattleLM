@@ -8,9 +8,25 @@
 
 /* Begin PBXBuildFile section */
 		2F48CAA42F2B850D00A8AE19 /* SwiftTerm in Frameworks */ = {isa = PBXBuildFile; productRef = 2F48CAA32F2B850D00A8AE19 /* SwiftTerm */; };
+		2F48CB022F2F982300A8AE19 /* BattleLMShared in Frameworks */ = {isa = PBXBuildFile; productRef = 2F48CB012F2F982300A8AE19 /* BattleLMShared */; };
+		2F85D0152F2FE55900FBC2AA /* BattleLMShared in Frameworks */ = {isa = PBXBuildFile; productRef = 2F48CB012F2F982300A8AE19 /* BattleLMShared */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
+		2F48CAD72F2F95CF00A8AE19 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 2F9621F12F291FEB00D03770 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 2F48CAC92F2F95CB00A8AE19;
+			remoteInfo = "BattleLM-iOS";
+		};
+		2F48CAE12F2F95D000A8AE19 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 2F9621F12F291FEB00D03770 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 2F48CAC92F2F95CB00A8AE19;
+			remoteInfo = "BattleLM-iOS";
+		};
 		2F9622072F291FF400D03770 /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
 			containerPortal = 2F9621F12F291FEB00D03770 /* Project object */;
@@ -28,12 +44,30 @@
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
+		2F48CACA2F2F95CB00A8AE19 /* BattleLM-iOS.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "BattleLM-iOS.app"; sourceTree = BUILT_PRODUCTS_DIR; };
+		2F48CAD62F2F95CF00A8AE19 /* BattleLM-iOSTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = "BattleLM-iOSTests.xctest"; sourceTree = BUILT_PRODUCTS_DIR; };
+		2F48CAE02F2F95CF00A8AE19 /* BattleLM-iOSUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = "BattleLM-iOSUITests.xctest"; sourceTree = BUILT_PRODUCTS_DIR; };
 		2F9621F92F291FEB00D03770 /* BattleLM.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = BattleLM.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		2F9622062F291FF400D03770 /* BattleLMTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = BattleLMTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		2F9622102F291FF400D03770 /* BattleLMUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = BattleLMUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
+		2F48CACB2F2F95CC00A8AE19 /* BattleLM-iOS */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = "BattleLM-iOS";
+			sourceTree = "<group>";
+		};
+		2F48CAD92F2F95CF00A8AE19 /* BattleLM-iOSTests */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = "BattleLM-iOSTests";
+			sourceTree = "<group>";
+		};
+		2F48CAE32F2F95D000A8AE19 /* BattleLM-iOSUITests */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = "BattleLM-iOSUITests";
+			sourceTree = "<group>";
+		};
 		2F9621FB2F291FEB00D03770 /* BattleLM */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
 			path = BattleLM;
@@ -52,6 +86,29 @@
 /* End PBXFileSystemSynchronizedRootGroup section */
 
 /* Begin PBXFrameworksBuildPhase section */
+		2F48CAC72F2F95CB00A8AE19 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				2F85D0152F2FE55900FBC2AA /* BattleLMShared in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		2F48CAD32F2F95CF00A8AE19 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				2F48CB022F2F982300A8AE19 /* BattleLMShared in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		2F48CADD2F2F95CF00A8AE19 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		2F9621F62F291FEB00D03770 /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
@@ -90,6 +147,9 @@
 				2F9621FB2F291FEB00D03770 /* BattleLM */,
 				2F9622092F291FF400D03770 /* BattleLMTests */,
 				2F9622132F291FF400D03770 /* BattleLMUITests */,
+				2F48CACB2F2F95CC00A8AE19 /* BattleLM-iOS */,
+				2F48CAD92F2F95CF00A8AE19 /* BattleLM-iOSTests */,
+				2F48CAE32F2F95D000A8AE19 /* BattleLM-iOSUITests */,
 				2F48CAA22F2B850D00A8AE19 /* Frameworks */,
 				2F9621FA2F291FEB00D03770 /* Products */,
 			);
@@ -101,6 +161,9 @@
 				2F9621F92F291FEB00D03770 /* BattleLM.app */,
 				2F9622062F291FF400D03770 /* BattleLMTests.xctest */,
 				2F9622102F291FF400D03770 /* BattleLMUITests.xctest */,
+				2F48CACA2F2F95CB00A8AE19 /* BattleLM-iOS.app */,
+				2F48CAD62F2F95CF00A8AE19 /* BattleLM-iOSTests.xctest */,
+				2F48CAE02F2F95CF00A8AE19 /* BattleLM-iOSUITests.xctest */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -108,6 +171,76 @@
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
+		2F48CAC92F2F95CB00A8AE19 /* BattleLM-iOS */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 2F48CAE82F2F95D000A8AE19 /* Build configuration list for PBXNativeTarget "BattleLM-iOS" */;
+			buildPhases = (
+				2F48CAC62F2F95CB00A8AE19 /* Sources */,
+				2F48CAC72F2F95CB00A8AE19 /* Frameworks */,
+				2F48CAC82F2F95CB00A8AE19 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			fileSystemSynchronizedGroups = (
+				2F48CACB2F2F95CC00A8AE19 /* BattleLM-iOS */,
+			);
+			name = "BattleLM-iOS";
+			packageProductDependencies = (
+				2F48CB012F2F982300A8AE19 /* BattleLMShared */,
+			);
+			productName = "BattleLM-iOS";
+			productReference = 2F48CACA2F2F95CB00A8AE19 /* BattleLM-iOS.app */;
+			productType = "com.apple.product-type.application";
+		};
+		2F48CAD52F2F95CF00A8AE19 /* BattleLM-iOSTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 2F48CAEB2F2F95D000A8AE19 /* Build configuration list for PBXNativeTarget "BattleLM-iOSTests" */;
+			buildPhases = (
+				2F48CAD22F2F95CF00A8AE19 /* Sources */,
+				2F48CAD32F2F95CF00A8AE19 /* Frameworks */,
+				2F48CAD42F2F95CF00A8AE19 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				2F48CAD82F2F95CF00A8AE19 /* PBXTargetDependency */,
+			);
+			fileSystemSynchronizedGroups = (
+				2F48CAD92F2F95CF00A8AE19 /* BattleLM-iOSTests */,
+			);
+			name = "BattleLM-iOSTests";
+			packageProductDependencies = (
+				2F48CB012F2F982300A8AE19 /* BattleLMShared */,
+			);
+			productName = "BattleLM-iOSTests";
+			productReference = 2F48CAD62F2F95CF00A8AE19 /* BattleLM-iOSTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
+		2F48CADF2F2F95CF00A8AE19 /* BattleLM-iOSUITests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 2F48CAEE2F2F95D000A8AE19 /* Build configuration list for PBXNativeTarget "BattleLM-iOSUITests" */;
+			buildPhases = (
+				2F48CADC2F2F95CF00A8AE19 /* Sources */,
+				2F48CADD2F2F95CF00A8AE19 /* Frameworks */,
+				2F48CADE2F2F95CF00A8AE19 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				2F48CAE22F2F95D000A8AE19 /* PBXTargetDependency */,
+			);
+			fileSystemSynchronizedGroups = (
+				2F48CAE32F2F95D000A8AE19 /* BattleLM-iOSUITests */,
+			);
+			name = "BattleLM-iOSUITests";
+			packageProductDependencies = (
+			);
+			productName = "BattleLM-iOSUITests";
+			productReference = 2F48CAE02F2F95CF00A8AE19 /* BattleLM-iOSUITests.xctest */;
+			productType = "com.apple.product-type.bundle.ui-testing";
+		};
 		2F9621F82F291FEB00D03770 /* BattleLM */ = {
 			isa = PBXNativeTarget;
 			buildConfigurationList = 2F96221A2F291FF400D03770 /* Build configuration list for PBXNativeTarget "BattleLM" */;
@@ -187,6 +320,17 @@
 				LastSwiftUpdateCheck = 2610;
 				LastUpgradeCheck = 2610;
 				TargetAttributes = {
+					2F48CAC92F2F95CB00A8AE19 = {
+						CreatedOnToolsVersion = 26.1.1;
+					};
+					2F48CAD52F2F95CF00A8AE19 = {
+						CreatedOnToolsVersion = 26.1.1;
+						TestTargetID = 2F48CAC92F2F95CB00A8AE19;
+					};
+					2F48CADF2F2F95CF00A8AE19 = {
+						CreatedOnToolsVersion = 26.1.1;
+						TestTargetID = 2F48CAC92F2F95CB00A8AE19;
+					};
 					2F9621F82F291FEB00D03770 = {
 						CreatedOnToolsVersion = 26.1.1;
 					};
@@ -211,6 +355,7 @@
 			minimizedProjectReferenceProxies = 1;
 			packageReferences = (
 				2F48CA9F2F2B801A00A8AE19 /* XCRemoteSwiftPackageReference "SwiftTerm" */,
+				2F48CB002F2F979C00A8AE19 /* XCLocalSwiftPackageReference "Packages/BattleLMShared" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 2F9621FA2F291FEB00D03770 /* Products */;
@@ -220,11 +365,35 @@
 				2F9621F82F291FEB00D03770 /* BattleLM */,
 				2F9622052F291FF400D03770 /* BattleLMTests */,
 				2F96220F2F291FF400D03770 /* BattleLMUITests */,
+				2F48CAC92F2F95CB00A8AE19 /* BattleLM-iOS */,
+				2F48CAD52F2F95CF00A8AE19 /* BattleLM-iOSTests */,
+				2F48CADF2F2F95CF00A8AE19 /* BattleLM-iOSUITests */,
 			);
 		};
 /* End PBXProject section */
 
 /* Begin PBXResourcesBuildPhase section */
+		2F48CAC82F2F95CB00A8AE19 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		2F48CAD42F2F95CF00A8AE19 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		2F48CADE2F2F95CF00A8AE19 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		2F9621F72F291FEB00D03770 /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
@@ -249,6 +418,27 @@
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
+		2F48CAC62F2F95CB00A8AE19 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		2F48CAD22F2F95CF00A8AE19 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		2F48CADC2F2F95CF00A8AE19 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		2F9621F52F291FEB00D03770 /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
@@ -273,6 +463,16 @@
 /* End PBXSourcesBuildPhase section */
 
 /* Begin PBXTargetDependency section */
+		2F48CAD82F2F95CF00A8AE19 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 2F48CAC92F2F95CB00A8AE19 /* BattleLM-iOS */;
+			targetProxy = 2F48CAD72F2F95CF00A8AE19 /* PBXContainerItemProxy */;
+		};
+		2F48CAE22F2F95D000A8AE19 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 2F48CAC92F2F95CB00A8AE19 /* BattleLM-iOS */;
+			targetProxy = 2F48CAE12F2F95D000A8AE19 /* PBXContainerItemProxy */;
+		};
 		2F9622082F291FF400D03770 /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
 			target = 2F9621F82F291FEB00D03770 /* BattleLM */;
@@ -286,6 +486,175 @@
 /* End PBXTargetDependency section */
 
 /* Begin XCBuildConfiguration section */
+		2F48CAE92F2F95D000A8AE19 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 2GWPG8KGW5;
+				ENABLE_PREVIEWS = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_CFBundleDisplayName = BattleLM;
+				INFOPLIST_KEY_NSAppTransportSecurity_NSAllowsArbitraryLoadsInLocalNetwork = YES;
+				INFOPLIST_KEY_NSCameraUsageDescription = "扫描二维码以连接 Mac";
+				INFOPLIST_KEY_NSLocalNetworkUsageDescription = "用于在同一局域网内连接你的 Mac";
+				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
+				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
+				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				IPHONEOS_DEPLOYMENT_TARGET = 26.1;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = "com.josh.BattleLM-iOS";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		2F48CAEA2F2F95D000A8AE19 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 2GWPG8KGW5;
+				ENABLE_PREVIEWS = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_CFBundleDisplayName = BattleLM;
+				INFOPLIST_KEY_NSAppTransportSecurity_NSAllowsArbitraryLoadsInLocalNetwork = YES;
+				INFOPLIST_KEY_NSCameraUsageDescription = "扫描二维码以连接 Mac";
+				INFOPLIST_KEY_NSLocalNetworkUsageDescription = "用于在同一局域网内连接你的 Mac";
+				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
+				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
+				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				IPHONEOS_DEPLOYMENT_TARGET = 26.1;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = "com.josh.BattleLM-iOS";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				VALIDATE_PRODUCT = YES;
+			};
+			name = Release;
+		};
+		2F48CAEC2F2F95D000A8AE19 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 2GWPG8KGW5;
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 26.1;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = "com.josh.BattleLM-iOSTests";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				STRING_CATALOG_GENERATE_SYMBOLS = NO;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/BattleLM-iOS.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/BattleLM-iOS";
+			};
+			name = Debug;
+		};
+		2F48CAED2F2F95D000A8AE19 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 2GWPG8KGW5;
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 26.1;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = "com.josh.BattleLM-iOSTests";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				STRING_CATALOG_GENERATE_SYMBOLS = NO;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/BattleLM-iOS.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/BattleLM-iOS";
+				VALIDATE_PRODUCT = YES;
+			};
+			name = Release;
+		};
+		2F48CAEF2F2F95D000A8AE19 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 2GWPG8KGW5;
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 26.1;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = "com.josh.BattleLM-iOSUITests";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				STRING_CATALOG_GENERATE_SYMBOLS = NO;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_TARGET_NAME = "BattleLM-iOS";
+			};
+			name = Debug;
+		};
+		2F48CAF02F2F95D000A8AE19 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 2GWPG8KGW5;
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 26.1;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = "com.josh.BattleLM-iOSUITests";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				STRING_CATALOG_GENERATE_SYMBOLS = NO;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_TARGET_NAME = "BattleLM-iOS";
+				VALIDATE_PRODUCT = YES;
+			};
+			name = Release;
+		};
 		2F9622182F291FF400D03770 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
@@ -551,6 +920,33 @@
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
+		2F48CAE82F2F95D000A8AE19 /* Build configuration list for PBXNativeTarget "BattleLM-iOS" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				2F48CAE92F2F95D000A8AE19 /* Debug */,
+				2F48CAEA2F2F95D000A8AE19 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		2F48CAEB2F2F95D000A8AE19 /* Build configuration list for PBXNativeTarget "BattleLM-iOSTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				2F48CAEC2F2F95D000A8AE19 /* Debug */,
+				2F48CAED2F2F95D000A8AE19 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		2F48CAEE2F2F95D000A8AE19 /* Build configuration list for PBXNativeTarget "BattleLM-iOSUITests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				2F48CAEF2F2F95D000A8AE19 /* Debug */,
+				2F48CAF02F2F95D000A8AE19 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
 		2F9621F42F291FEB00D03770 /* Build configuration list for PBXProject "BattleLM" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
@@ -589,6 +985,13 @@
 		};
 /* End XCConfigurationList section */
 
+/* Begin XCLocalSwiftPackageReference section */
+		2F48CB002F2F979C00A8AE19 /* XCLocalSwiftPackageReference "Packages/BattleLMShared" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = Packages/BattleLMShared;
+		};
+/* End XCLocalSwiftPackageReference section */
+
 /* Begin XCRemoteSwiftPackageReference section */
 		2F48CA9F2F2B801A00A8AE19 /* XCRemoteSwiftPackageReference "SwiftTerm" */ = {
 			isa = XCRemoteSwiftPackageReference;
@@ -605,6 +1008,11 @@
 			isa = XCSwiftPackageProductDependency;
 			package = 2F48CA9F2F2B801A00A8AE19 /* XCRemoteSwiftPackageReference "SwiftTerm" */;
 			productName = SwiftTerm;
+		};
+		2F48CB012F2F982300A8AE19 /* BattleLMShared */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 2F48CB002F2F979C00A8AE19 /* XCLocalSwiftPackageReference "Packages/BattleLMShared" */;
+			productName = BattleLMShared;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};
