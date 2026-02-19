@@ -68,7 +68,8 @@ class RemoteConnection: ObservableObject {
     
     private func savePairedDevice(_ device: PairedDevice) {
         var devices = pairedDevices
-        devices.removeAll { $0.id == device.id }
+        // Deduplicate by endpoint (same Mac = same endpoint), not by id
+        devices.removeAll { $0.endpoint == device.endpoint }
         devices.insert(device, at: 0)
         pairedDevices = devices
         
@@ -162,12 +163,7 @@ class RemoteConnection: ObservableObject {
         webSocket?.resume()
         
         state = .authenticating
-        
-        #if canImport(UIKit)
-        let deviceName = UIDevice.current.name
-        #else
-        let deviceName = "iPhone"
-        #endif
+        let deviceName = localDeviceDisplayName()
         
         // 根据是否有配对码选择认证方式
         if hasPairingCode, let code = pairingCode {
@@ -189,6 +185,40 @@ class RemoteConnection: ObservableObject {
         
         startReceiving()
         startAuthTimeout()
+    }
+
+    private func localDeviceDisplayName() -> String {
+        #if canImport(UIKit)
+        let rawName = UIDevice.current.name.trimmingCharacters(in: .whitespacesAndNewlines)
+        let genericNames: Set<String> = ["iPhone", "iPad", "iPod touch", "iPod"]
+        if !rawName.isEmpty, !genericNames.contains(rawName) {
+            return rawName
+        }
+
+        let model = UIDevice.current.model.trimmingCharacters(in: .whitespacesAndNewlines)
+        if let identifier = hardwareModelIdentifier() {
+            if !model.isEmpty {
+                return "\(model) (\(identifier))"
+            }
+            return identifier
+        }
+
+        return model.isEmpty ? "iPhone" : model
+        #else
+        return "iPhone"
+        #endif
+    }
+
+    private func hardwareModelIdentifier() -> String? {
+        var systemInfo = utsname()
+        guard uname(&systemInfo) == 0 else { return nil }
+
+        let identifier = Mirror(reflecting: systemInfo.machine).children.reduce(into: "") { result, element in
+            guard let value = element.value as? Int8, value != 0 else { return }
+            result.append(Character(UnicodeScalar(UInt8(value))))
+        }
+
+        return identifier.isEmpty ? nil : identifier
     }
     
     func disconnect() {

@@ -31,22 +31,28 @@ struct WelcomeView: View {
             
             // Paired devices
             if !connection.pairedDevices.isEmpty {
-                VStack(alignment: .leading, spacing: 12) {
+                VStack(alignment: .leading, spacing: 8) {
                     Text("Paired Devices")
                         .font(.headline)
                         .foregroundColor(.secondary)
                         .padding(.horizontal)
                     
-                    ForEach(connection.pairedDevices) { device in
-                        PairedDeviceRow(device: device)
-                            .swipeActions(edge: .trailing, allowsFullSwipe: true) {
-                                Button(role: .destructive) {
-                                    connection.removePairedDevice(device)
-                                } label: {
-                                    Label("Delete", systemImage: "trash")
-                                }
+                    List {
+                        ForEach(connection.pairedDevices) { device in
+                            PairedDeviceRow(device: device)
+                                .listRowInsets(EdgeInsets(top: 4, leading: 16, bottom: 4, trailing: 16))
+                                .listRowBackground(Color.clear)
+                                .listRowSeparator(.hidden)
+                        }
+                        .onDelete { indexSet in
+                            for index in indexSet {
+                                connection.removePairedDevice(connection.pairedDevices[index])
                             }
+                        }
                     }
+                    .listStyle(.plain)
+                    .scrollDisabled(true)
+                    .frame(height: CGFloat(connection.pairedDevices.count) * 80)
                 }
                 .padding(.top, 16)
             }
