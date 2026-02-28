@@ -1418,6 +1418,8 @@ class SessionManager: ObservableObject {
         let startTime = Date()
         var lastResponse = ""
         var lastChangeTime = Date()
+        var lastRawContent = ""
+        var lastRawChangeTime = Date()
 
         let userMessage = await transientState.pendingUserMessage(for: ai.id)
 
@@ -1427,12 +1429,22 @@ class SessionManager: ObservableObject {
                 let response = extractResponse(from: content, for: ai, userMessage: userMessage)
                 let trimmedResponse = response.trimmingCharacters(in: .whitespacesAndNewlines)
 
+                // 关键修复：除了“提取后的回复”之外，也要观察原始终端内容是否仍在变化。
+                // 否则 AI 可能还在工具调用/检索阶段（raw 在变），但 response 提取文本暂时不变，
+                // 会被误判为“稳定完成”并提前进入下一轮。
+                if content != lastRawContent {
+                    lastRawContent = content
+                    lastRawChangeTime = Date()
+                }
+
                 if response != lastResponse {
                     lastResponse = response
                     lastChangeTime = Date()
                 } else if !trimmedResponse.isEmpty, !isLikelyInProgressResponse(trimmedResponse, for: ai) {
                     // 响应已开始且不处于“处理中”，检查稳定性
-                    if Date().timeIntervalSince(lastChangeTime) >= stableSeconds {
+                    let responseStable = Date().timeIntervalSince(lastChangeTime) >= stableSeconds
+                    let terminalStable = Date().timeIntervalSince(lastRawChangeTime) >= stableSeconds
+                    if responseStable && terminalStable {
                         await transientState.clearPendingUserMessage(for: ai.id)
                         if !trimmedResponse.isEmpty {
                             let aiEvent = MessageDTO(
@@ -1489,7 +1501,14 @@ class SessionManager: ObservableObject {
         case .codex:
             return tail.contains("thinking") ||
                 tail.contains("analyzing") ||
-                tail.contains("processing")
+                tail.contains("processing") ||
+                tail.contains("explored") ||
+                tail.contains("read ") ||
+                tail.contains("search") ||
+                tail.contains("grep") ||
+                tail.contains("rg ") ||
+                tail.contains("running") ||
+                tail.contains("executing")
         case .claude:
             return tail.contains("thinking") ||
                 tail.contains("envisioning") ||

@@ -189,8 +189,8 @@ class DiscussionManager: ObservableObject {
                         try await self.sessionManager.sendMessage(question, to: ai)
                         let response = try await self.sessionManager.waitForResponse(
                             from: ai,
-                            stableSeconds: 3.0,
-                            maxWait: 180.0
+                            stableSeconds: 8.0,
+                            maxWait: 360.0
                         )
                         let trimmed = response.trimmingCharacters(in: .whitespacesAndNewlines)
                         guard !trimmed.isEmpty else { return nil }
