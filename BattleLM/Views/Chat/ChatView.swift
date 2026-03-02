@@ -33,7 +33,7 @@ struct ChatView: View {
                 sendMessage()
             }
         }
-        .background(Color(.textBackgroundColor).opacity(0.3))
+        .background(Color(.windowBackgroundColor))
         .onChange(of: selectedMode) { newMode in
             // 更新群聊模式
             updateChatMode(newMode)
@@ -162,7 +162,7 @@ struct ChatHeaderView: View {
             
         }
         .padding()
-        .background(Color(.windowBackgroundColor))
+        // 背景色统一由外层 VStack 控制
     }
 }
 

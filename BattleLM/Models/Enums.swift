@@ -11,6 +11,10 @@ enum AIType: String, Codable, CaseIterable, Identifiable {
     
     var id: String { rawValue }
     
+    /// 用户可见的 AI 类型（排除未就绪的）
+    static var userVisibleCases: [AIType] {
+        allCases.filter { $0 != .kimi }
+    }    
     var displayName: String {
         switch self {
         case .claude: return "Claude"

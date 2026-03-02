@@ -249,6 +249,40 @@ class SessionManager: ObservableObject {
         print("🛑 Session stopped: \(sessionName)")
     }
 
+    // MARK: - Headless Session Registration
+
+    /// 注册一个"headless"会话（不启动 tmux，只更新状态）。
+    /// 用于 JSONStreamEngine：Claude 走 headless 进程时不需要 tmux，
+    /// 但仍需让 UI（绿点、isActive）正确显示。
+    func registerHeadlessSession(for ai: AIInstance) async {
+        // 如果已有 tmux 残留会话，先清理
+        let existing = await MainActor.run { activeSessions[ai.id] }
+        if let existing, existing != "__headless__" {
+            // 有残留 tmux session，先 kill 它
+            _ = try? await runTmux(["kill-session", "-t", existing])
+            await MainActor.run {
+                activeSessions.removeValue(forKey: ai.id)
+                terminalChoicePrompts.removeValue(forKey: ai.id)
+            }
+            print("🧹 Cleaned stale tmux session \(existing) for \(ai.name)")
+        }
+        
+        await MainActor.run {
+            activeSessions[ai.id] = "__headless__"
+            sessionStatus[ai.id] = .running
+        }
+        print("⚡ Headless session registered for \(ai.name) (no tmux)")
+    }
+
+    /// 取消 headless 会话注册。
+    func unregisterHeadlessSession(for ai: AIInstance) async {
+        await MainActor.run {
+            guard activeSessions[ai.id] == "__headless__" else { return }
+            activeSessions.removeValue(forKey: ai.id)
+            sessionStatus[ai.id] = .stopped
+        }
+    }
+
     // MARK: - Terminal Prompts (Interactive Choice)
 
     private func terminalChoicePromptSignature(_ prompt: TerminalChoicePrompt) -> String {
@@ -778,6 +812,11 @@ class SessionManager: ObservableObject {
         }
     }
 
+    /// 获取指定 AI 当前待回复的用户消息（供 JSONStreamEngine 读取）
+    func getPendingUserMessage(for aiId: UUID) async -> String? {
+        await transientState.pendingUserMessage(for: aiId)
+    }
+
     /// 发送后校验：若文本仍停留在输入区（未真正提交），自动补发 Enter。
     /// 这是一个 best-effort 的防抖机制，覆盖 Gemini/Codex/Qwen/Kimi/Claude 的偶发“Enter 吞键”场景。
     private func ensureSubmittedIfNeeded(text: String, for ai: AIInstance, sessionName: String) async {
@@ -1220,7 +1259,13 @@ class SessionManager: ObservableObject {
             return
         }
         
-        // Fallback：其他 AI 或 Claude transcript 不可用时，使用传统 capture-pane 方式
+        // 🎯 Qwen 专用路径：使用 transcript JSONL 提取（100% 可靠）
+        if ai.type == .qwen && QwenTranscriptExtractor.isTranscriptAvailable(for: ai.workingDirectory) {
+            try await streamQwenTranscript(from: ai, onUpdate: bridgedOnUpdate, stableSeconds: stableSeconds, maxWait: maxWait)
+            return
+        }
+        
+        // Fallback：其他 AI 或 transcript 不可用时，使用传统 capture-pane 方式
         try await streamWithCapturPane(from: ai, onUpdate: bridgedOnUpdate, stableSeconds: stableSeconds, maxWait: maxWait)
     }
     
@@ -1264,6 +1309,34 @@ class SessionManager: ObservableObject {
             maxWait: maxWait
         )
         await transientState.clearClaudePendingRequest(for: ai.id)
+        await transientState.clearPendingUserMessage(for: ai.id)
+    }
+    
+    /// Qwen 专用：从 transcript JSONL 流式提取响应
+    private func streamQwenTranscript(from ai: AIInstance,
+                                       onUpdate: @escaping (String, Bool, Bool) -> Void,
+                                       stableSeconds: Double,
+                                       maxWait: Double) async throws {
+        print("📜 Using Qwen Transcript Extractor for: \(ai.name)")
+        
+        // Qwen 不需要 Claude 那样的 pendingRequest context，直接用 transcript
+        guard let transcriptURL = QwenTranscriptExtractor.transcriptURL(for: ai.workingDirectory) else {
+            throw SessionError.sessionNotFound("Qwen transcript not found for \(ai.name)")
+        }
+
+        let userMessage = await transientState.pendingUserMessage(for: ai.id)
+        
+        _ = try await QwenTranscriptExtractor.streamLatestResponse(
+            transcriptURL: transcriptURL,
+            afterUserUuid: nil,
+            expectedUserText: userMessage,
+            minTimestamp: Date().addingTimeInterval(-5), // 只匹配最近 5 秒内的消息
+            onUpdate: { content, isComplete in
+                onUpdate(content, false, isComplete)
+            },
+            stableSeconds: stableSeconds,
+            maxWait: maxWait
+        )
         await transientState.clearPendingUserMessage(for: ai.id)
     }
     

@@ -114,7 +114,8 @@ struct MessageBubbleView: View {
                 }
                 
                 // 消息内容（带右键菜单）
-                Text(message.content)
+                Text(Self.markdownText(message.content))
+                    .textSelection(.enabled)
                     .padding(12)
                     .background(bubbleBackground)
                     .foregroundColor(bubbleTextColor)
@@ -232,6 +233,15 @@ struct MessageBubbleView: View {
     
     private var bubbleTextColor: Color {
         isUser ? .white : .primary
+    }
+
+    /// Markdown → AttributedString；解析失败时回退为纯文本
+    static func markdownText(_ raw: String) -> AttributedString {
+        if let md = try? AttributedString(markdown: raw,
+                                           options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace)) {
+            return md
+        }
+        return AttributedString(raw)
     }
 }
 

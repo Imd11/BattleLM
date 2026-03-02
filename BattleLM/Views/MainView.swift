@@ -421,6 +421,7 @@ struct EmptyStateView: View {
                 .resizable()
                 .scaledToFit()
                 .frame(width: 80, height: 80)
+                .clipShape(RoundedRectangle(cornerRadius: 16))
             
             Text("Welcome to BattleLM")
                 .font(.title)

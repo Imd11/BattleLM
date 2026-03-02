@@ -10,6 +10,7 @@ struct MessageInputView: View {
     
     @EnvironmentObject var appState: AppState
     @FocusState private var isFocused: Bool
+    @State private var isInputFocused: Bool = false
     @ObservedObject private var discussionManager = DiscussionManager.shared
     @State private var isModeMenuOpen = false
     @State private var isModeHovered = false
@@ -175,36 +176,66 @@ struct MessageInputView: View {
                 }
             }
             
-            // 输入框
-            TextField(isBattling ? "AIs are battling..." : modePlaceholder, text: $inputText, axis: .vertical)
-                .textFieldStyle(.plain)
-                .lineLimit(1...5)
-                .focused($isFocused)
-                .disabled(isBattling)
-                .onSubmit {
+            inputSection
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 10)
+        .background(inputBackground)
+        .padding(.horizontal, 40)
+        .padding(.vertical, 12)
+    }
+    
+    // MARK: - Extracted Sub-views
+    
+    private var inputSection: some View {
+        Group {
+            // 输入框 — 使用和 1:1 相同的 ChatTextField
+            ChatTextField(
+                placeholder: isBattling ? "AIs are battling..." : modePlaceholder,
+                text: $inputText,
+                onCommit: {
                     if !inputText.isEmpty && isSoloReady {
                         onSend()
                     }
+                },
+                onFocusChange: { focused in
+                    withAnimation(.easeInOut(duration: 0.15)) {
+                        isInputFocused = focused
+                    }
                 }
+            )
+            .frame(minHeight: 30)
+            .disabled(isBattling)
             
-            // 发送按钮
-            Button {
-                onSend()
-            } label: {
-                Text(sendButtonTitle)
-                    .fontWeight(.semibold)
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 8)
-                    .background(sendButtonBackground)
-                    .foregroundColor(sendButtonForeground)
-                    .cornerRadius(8)
-            }
-            .buttonStyle(.plain)
-            .disabled(isBattling || !isSoloReady || inputText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-            .keyboardShortcut(.return, modifiers: .command)
+            // 发送按钮 — 和 1:1 相同的橙色圆形图标
+            sendButton
         }
-        .padding()
-        .background(Color(.windowBackgroundColor))
+    }
+    
+    private var sendButton: some View {
+        let canSend = !isBattling && isSoloReady && !inputText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        return Button {
+            onSend()
+        } label: {
+            Image(systemName: "arrow.up.circle.fill")
+                .font(.system(size: 22, weight: .semibold))
+                .foregroundColor(canSend ? Color(hex: "#A3390E") : Color.gray.opacity(0.4))
+        }
+        .buttonStyle(.plain)
+        .disabled(!canSend)
+    }
+    
+    private var inputBackground: some View {
+        RoundedRectangle(cornerRadius: 20)
+            .fill(Color(.windowBackgroundColor))
+            .overlay(
+                RoundedRectangle(cornerRadius: 20)
+                    .stroke(
+                        isInputFocused ? Color.accentColor.opacity(0.6) : Color.gray.opacity(0.25),
+                        lineWidth: isInputFocused ? 1.5 : 1
+                    )
+            )
+            .shadow(color: .black.opacity(0.08), radius: 8, x: 0, y: 2)
     }
     
     // MARK: - Computed Properties

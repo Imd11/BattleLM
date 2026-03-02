@@ -37,7 +37,7 @@ struct AddAISheet: View {
                     ScrollViewReader { proxy in
                         ScrollView(.horizontal, showsIndicators: false) {
                             HStack(spacing: 16) {
-                                ForEach(Array(AIType.allCases.enumerated()), id: \.element.id) { index, type in
+                                ForEach(Array(AIType.userVisibleCases.enumerated()), id: \.element.id) { index, type in
                                     AITypeCard(
                                         type: type,
                                         isSelected: selectedType == type
@@ -53,10 +53,10 @@ struct AddAISheet: View {
                         }
                         .onChange(of: scrollOffset) { newValue in
                             // 根据滚动条位置滚动到对应的卡片
-                            let cardCount = AIType.allCases.count
+                            let cardCount = AIType.userVisibleCases.count
                             let targetIndex = Int(newValue * CGFloat(cardCount - 1))
                             let clampedIndex = max(0, min(cardCount - 1, targetIndex))
-                            if let targetType = AIType.allCases[safe: clampedIndex] {
+                            if let targetType = AIType.userVisibleCases[safe: clampedIndex] {
                                 withAnimation(.easeOut(duration: 0.2)) {
                                     proxy.scrollTo(targetType.id, anchor: .leading)
                                 }
@@ -67,7 +67,7 @@ struct AddAISheet: View {
                     // 自定义滚动条轨道（始终预留空间）
                     GeometryReader { outerGeo in
                         let totalWidth = outerGeo.size.width
-                        let cardCount = CGFloat(AIType.allCases.count)
+                        let cardCount = CGFloat(AIType.userVisibleCases.count)
                         let visibleRatio = min(1.0, 4.0 / cardCount)
                         let thumbWidth = max(60, totalWidth * visibleRatio)
                         let maxOffset = totalWidth - thumbWidth
@@ -232,7 +232,7 @@ struct AddAISheet: View {
                     if let ai = newAI {
                         Task {
                             do {
-                                try await SessionManager.shared.startSession(for: ai)
+                                try await AIStreamEngineRouter.active.startSession(for: ai)
                                 await MainActor.run {
                                     appState.setAIActive(true, for: ai.id)
                                 }
@@ -432,7 +432,7 @@ struct CreateGroupSheet: View {
                     ScrollViewReader { proxy in
                         ScrollView(.horizontal, showsIndicators: false) {
                             HStack(spacing: 12) {
-                                ForEach(Array(AIType.allCases.enumerated()), id: \.element.id) { index, type in
+                                ForEach(Array(AIType.userVisibleCases.enumerated()), id: \.element.id) { index, type in
                                     QuickStartAICard(
                                         type: type,
                                         isSelected: selectedAITypes.contains(type),
@@ -452,7 +452,7 @@ struct CreateGroupSheet: View {
                     }
                     
                     // 简化的滚动指示器（只在有多于4个AI类型时显示）
-                    if AIType.allCases.count > 4 {
+                    if AIType.userVisibleCases.count > 4 {
                         HStack {
                             Spacer()
                             Text("← Scroll to see more →")
@@ -581,7 +581,7 @@ struct CreateGroupSheet: View {
                     for ai in createdAIs {
                         group.addTask {
                             do {
-                                try await SessionManager.shared.startSession(for: ai)
+                                try await AIStreamEngineRouter.active.startSession(for: ai)
                                 await MainActor.run {
                                     appState.setAIActive(true, for: ai.id)
                                 }
@@ -846,6 +846,38 @@ struct SettingsSheet: View {
     // MARK: - Terminal Tab
     private var terminalContent: some View {
         VStack(alignment: .leading, spacing: 20) {
+            // JSON Stream 模式切换
+            VStack(alignment: .leading, spacing: 8) {
+                Toggle(isOn: $appState.useJSONStreamMode) {
+                    HStack(spacing: 8) {
+                        Image(systemName: "bolt.fill")
+                            .foregroundColor(.orange)
+                        Text("JSON Stream Mode")
+                            .font(.headline)
+                    }
+                }
+                .toggleStyle(.switch)
+
+                Text("Uses headless CLI process with structured JSON output instead of tmux terminal parsing. Currently supports Claude only. Other AIs automatically fall back to tmux.")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+
+                if appState.useJSONStreamMode {
+                    HStack(spacing: 6) {
+                        Image(systemName: "checkmark.circle.fill")
+                            .foregroundColor(.green)
+                            .font(.caption)
+                        Text("Active — Claude Solo chat uses direct JSON stream")
+                            .font(.caption)
+                            .foregroundColor(.green)
+                    }
+                }
+            }
+            .padding()
+            .background(RoundedRectangle(cornerRadius: 10).fill(Color(.controlBackgroundColor)))
+
+            Divider()
+
             Text("Terminal Theme")
                 .font(.headline)
             

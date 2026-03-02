@@ -44,6 +44,22 @@ class AppState: ObservableObject {
     @Published var showSettingsSheet: Bool = false
     @Published var showPairingSheet: Bool = false
 
+    // MARK: - Engine Mode
+
+    /// JSON Stream 模式开关（true = 走 headless 进程 + NDJSON，false = 走旧 tmux 路径）
+    /// ⚠️ 测试阶段默认 true，验证完毕后可改回 false。Phase 1 仅影响 Claude 的普通问答。
+    @Published var useJSONStreamMode: Bool = {
+        // 如果用户从未手动设置过，默认开启（测试阶段）
+        if UserDefaults.standard.object(forKey: "useJSONStreamMode") == nil {
+            return true
+        }
+        return UserDefaults.standard.bool(forKey: "useJSONStreamMode")
+    }() {
+        didSet {
+            UserDefaults.standard.set(useJSONStreamMode, forKey: "useJSONStreamMode")
+        }
+    }
+
     // MARK: - CLI Preflight
 
     /// 各 AI CLI 的可用性缓存（启动后预热，Add AI Sheet 直接读缓存避免卡顿）
@@ -308,11 +324,12 @@ class AppState: ObservableObject {
         guard let index = groupChats.firstIndex(where: { $0.id == chatId }) else { return }
         
         // 确保所有成员 AI 的会话已启动
+        let engine = AIStreamEngineRouter.active
         for ai in members {
             if !ai.isActive {
                 if let aiIndex = aiInstances.firstIndex(where: { $0.id == ai.id }) {
                     do {
-                        try await SessionManager.shared.startSession(for: aiInstances[aiIndex])
+                        try await engine.startSession(for: aiInstances[aiIndex])
                         setAIActive(true, for: ai.id)
                     } catch {
                         print("❌ Failed to start session for \(ai.name): \(error)")
@@ -404,11 +421,12 @@ class AppState: ObservableObject {
         guard let index = groupChats.firstIndex(where: { $0.id == chatId }) else { return }
         
         // 确保所有成员 AI 的会话已启动
+        let engine = AIStreamEngineRouter.active
         for ai in members {
             if !ai.isActive {
                 if let aiIndex = aiInstances.firstIndex(where: { $0.id == ai.id }) {
                     do {
-                        try await SessionManager.shared.startSession(for: aiInstances[aiIndex])
+                        try await engine.startSession(for: aiInstances[aiIndex])
                         setAIActive(true, for: ai.id)
                     } catch {
                         print("❌ Failed to start session for \(ai.name): \(error)")
@@ -430,14 +448,14 @@ class AppState: ObservableObject {
             return
         }
         
-        // 向所有 AI 发送问题并收集响应
+        // 确保所有活跃成员 AI 的会话已启动
         for ai in activeMembers {
             do {
                 // 发送问题
-                try await SessionManager.shared.sendMessage(question, to: ai)
+                try await engine.sendMessage(question, to: ai)
                 
                 // 流式获取响应
-                try await SessionManager.shared.streamResponse(from: ai) { [weak self] response, isThinking, isComplete in
+                try await engine.streamResponse(from: ai, onUpdate: { [weak self] (response: String, isThinking: Bool, isComplete: Bool) in
                     guard let self = self else { return }
                     
                     guard let idx = self.groupChats.firstIndex(where: { $0.id == chatId }) else { return }
@@ -461,7 +479,7 @@ class AppState: ObservableObject {
                         message.isStreaming = !isComplete
                         self.groupChats[idx].messages.append(message)
                     }
-                }
+                }, stableSeconds: 4.0, maxWait: 120.0)
             } catch {
                 print("❌ Q&A error for \(ai.name): \(error)")
                 let errorMsg = Message.systemMessage("⚠️ \(ai.name) failed to respond")
@@ -481,10 +499,11 @@ class AppState: ObservableObject {
         guard let index = groupChats.firstIndex(where: { $0.id == chatId }) else { return }
         
         // 确保 AI 会话已启动
+        let engine = AIStreamEngineRouter.active
         if !targetAI.isActive {
             if let aiIndex = aiInstances.firstIndex(where: { $0.id == targetAI.id }) {
                 do {
-                    try await SessionManager.shared.startSession(for: aiInstances[aiIndex])
+                    try await engine.startSession(for: aiInstances[aiIndex])
                     setAIActive(true, for: targetAI.id)
                 } catch {
                     print("❌ Failed to start session for \(targetAI.name): \(error)")
@@ -497,9 +516,9 @@ class AppState: ObservableObject {
         
         // 发送并流式获取响应
         do {
-            try await SessionManager.shared.sendMessage(question, to: targetAI)
+            try await engine.sendMessage(question, to: targetAI)
             
-            try await SessionManager.shared.streamResponse(from: targetAI) { [weak self] response, isThinking, isComplete in
+            try await engine.streamResponse(from: targetAI, onUpdate: { [weak self] (response: String, isThinking: Bool, isComplete: Bool) in
                 guard let self = self else { return }
                 guard let idx = self.groupChats.firstIndex(where: { $0.id == chatId }) else { return }
                 
@@ -519,7 +538,7 @@ class AppState: ObservableObject {
                     message.isStreaming = !isComplete
                     self.groupChats[idx].messages.append(message)
                 }
-            }
+            }, stableSeconds: 4.0, maxWait: 120.0)
         } catch {
             print("❌ Solo error for \(targetAI.name): \(error)")
             let errorMsg = Message.systemMessage("⚠️ \(targetAI.name) failed to respond")

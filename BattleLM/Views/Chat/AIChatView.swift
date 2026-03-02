@@ -14,6 +14,7 @@ struct AIChatView: View {
     @State private var pendingScrollToMessageId: UUID? = nil
     @State private var focusRequestId: UUID? = nil
     @State private var isSubmittingTerminalChoice: Bool = false
+    @State private var isInputFocused: Bool = false
     
     private let inputControlHeight: CGFloat = 30
 
@@ -61,11 +62,7 @@ struct AIChatView: View {
                 
                 Spacer()
                 
-                // 状态
-                if isLoading || sessionManager.sessionStatus[ai.id] == .starting {
-                    ProgressView()
-                        .scaleEffect(0.7)
-                }
+                // 正文的三点动画已表示 AI 在思考，不需要重复的 spinner
                 
                 // 启动/停止按钮
                 Button {
@@ -79,7 +76,7 @@ struct AIChatView: View {
                 .help(isSessionRunning ? "Stop AI" : "Start AI")
             }
             .padding()
-            .background(Color(.windowBackgroundColor))
+            // 背景色统一由外层 VStack 控制
             
             Divider()
             
@@ -165,7 +162,9 @@ struct AIChatView: View {
                 clearInputFocus()
             })
 
-            if let prompt = terminalChoicePrompt {
+            // ⚡ Headless 模式下不显示终端确认卡片（没有 tmux 会话产生 prompt）
+            let isHeadlessClaude = appState.useJSONStreamMode && currentAI.type == .claude
+            if let prompt = terminalChoicePrompt, !isHeadlessClaude {
                 TerminalChoicePromptCard(
                     aiName: currentAI.name,
                     prompt: prompt,
@@ -193,44 +192,86 @@ struct AIChatView: View {
                 .padding(.horizontal)
                 .padding(.vertical, 10)
             }
-            
-            Divider()
-            
-            // 输入区域
-            HStack(alignment: .center, spacing: 8) {
-                // 快捷指令按钮
-                SlashCommandMenu(ai: currentAI) { command in
-                    handleSlashCommand(command)
-                }
-                .frame(width: inputControlHeight, height: inputControlHeight, alignment: .center)
-                
-                ChatTextField(
-                    placeholder: "Ask \(currentAI.name) something...",
-                    text: $inputText,
-                    focusId: ai.id,
-                    focusRequestId: $focusRequestId,
-                    onCommit: {
-                        sendMessage()
+            // 输入面板
+                HStack(alignment: .center, spacing: 8) {
+                    // 快捷指令按钮
+                    SlashCommandMenu(ai: currentAI) { command in
+                        handleSlashCommand(command)
                     }
-                )
-                .frame(height: inputControlHeight)
-                // 允许在会话启动期间先输入；发送会自动启动会话
-                .disabled(isLoading)
-                
-                Button {
-                    sendMessage()
-                } label: {
-                    Image(systemName: "arrow.up.circle.fill")
-                        .font(.system(size: 22, weight: .semibold))
-                        .foregroundColor(Color(hex: "#A3390E"))
+                    .frame(width: inputControlHeight, height: inputControlHeight, alignment: .center)
+                    
+                    ChatTextField(
+                        placeholder: "Ask \(currentAI.name) something...",
+                        text: $inputText,
+                        focusId: ai.id,
+                        focusRequestId: $focusRequestId,
+                        onCommit: {
+                            sendMessage()
+                        },
+                        onFocusChange: { focused in
+                            withAnimation(.easeInOut(duration: 0.15)) {
+                                isInputFocused = focused
+                            }
+                        }
+                    )
+                    .frame(minHeight: inputControlHeight)
+                    // 允许在会话启动期间先输入；发送会自动启动会话
+                    .disabled(isLoading)
+                    
+                    // 附件按钮
+                    Button {
+                        attachFile()
+                    } label: {
+                        Image(systemName: "paperclip")
+                            .font(.system(size: 14, weight: .medium))
+                            .foregroundColor(.secondary)
+                    }
+                    .buttonStyle(.plain)
+                    .frame(width: inputControlHeight, height: inputControlHeight, alignment: .center)
+                    .help("Attach file path")
+                    
+                    Button {
+                        sendMessage()
+                    } label: {
+                        Image(systemName: "arrow.up.circle.fill")
+                            .font(.system(size: 22, weight: .semibold))
+                            .foregroundColor(Color(hex: "#A3390E"))
+                    }
+                    .frame(width: inputControlHeight, height: inputControlHeight, alignment: .center)
+                    .disabled(isLoading || (isAwaitingTerminalChoice && !(appState.useJSONStreamMode && currentAI.type == .claude)) || inputText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                    .buttonStyle(.plain)
                 }
-                .frame(width: inputControlHeight, height: inputControlHeight, alignment: .center)
-                .disabled(isLoading || isAwaitingTerminalChoice || inputText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-                .buttonStyle(.plain)
-            }
-            .padding()
-            .background(Color(.windowBackgroundColor))
+                .padding(.horizontal, 12)
+                .padding(.vertical, 10)
+                .background(
+                    RoundedRectangle(cornerRadius: 20)
+                        .fill(Color(.windowBackgroundColor))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 20)
+                                .stroke(
+                                    isInputFocused ? Color.accentColor.opacity(0.6) : Color.gray.opacity(0.25),
+                                    lineWidth: isInputFocused ? 1.5 : 1
+                                )
+                        )
+                        .shadow(color: .black.opacity(0.08), radius: 8, x: 0, y: 2)
+                )
+                .contentShape(Rectangle())
+                .onTapGesture {
+                    requestInputFocus()
+                }
+                .onHover { hovering in
+                    if hovering {
+                        NSCursor.iBeam.push()
+                    } else {
+                        NSCursor.pop()
+                    }
+                }
+                .padding(.horizontal, 40)
+                .padding(.top, 6)
+                .padding(.bottom, 16)
+            // 背景色统一由外层 VStack 控制
         }
+        .background(Color(.windowBackgroundColor))
         .onAppear {
             requestInputFocus()
         }
@@ -262,15 +303,33 @@ struct AIChatView: View {
         }
     }
     
+    private func attachFile() {
+        let panel = NSOpenPanel()
+        panel.canChooseFiles = true
+        panel.canChooseDirectories = true
+        panel.allowsMultipleSelection = true
+        panel.message = "Select files to reference"
+        panel.prompt = "Attach"
+        
+        guard panel.runModal() == .OK else { return }
+        
+        let paths = panel.urls.map { $0.path }
+        let separator = inputText.isEmpty || inputText.hasSuffix(" ") ? "" : " "
+        inputText += separator + paths.joined(separator: " ")
+        requestInputFocus()
+    }
+    
     private func sendMessage() {
         let trimmed = inputText.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !isLoading, !trimmed.isEmpty else { return }
 
         // 若终端正在等待用户确认（信任/权限等），先让用户完成确认再发送（保留输入框内容）
-        guard !isAwaitingTerminalChoice else { return }
+        // ⚡ JSON Stream 模式下 Claude 的非 slash command 消息走 headless，tmux 提示无关
+        let isTerminalCommand = trimmed.hasPrefix("/")
+        let headlessBypass = appState.useJSONStreamMode && currentAI.type == .claude && !isTerminalCommand
+        guard !isAwaitingTerminalChoice || headlessBypass else { return }
 
         let question = trimmed
-        let isTerminalCommand = question.hasPrefix("/")
 
         isLoading = true
         streamingMessageId = nil
@@ -280,19 +339,30 @@ struct AIChatView: View {
                 // 发送前确保会话已启动；否则 MessageRouter/SessionManager 会找不到 session
                 let hasSession = await MainActor.run { sessionManager.activeSessions[currentAI.id] != nil }
                 if !hasSession {
-                    try await sessionManager.startSession(for: currentAI)
+                    try await AIStreamEngineRouter.active.startSession(for: currentAI)
                     appState.setAIActive(true, for: currentAI.id)
-                    appState.setTerminalInteractive(true, for: currentAI.id)
+                    // ⚡ Headless Claude 不需要终端面板
+                    if appState.useJSONStreamMode && currentAI.type == .claude {
+                        appState.showTerminalPanel = false
+                    } else {
+                        appState.setTerminalInteractive(true, for: currentAI.id)
+                    }
                 }
 
                 // 某些 CLI（尤其 Claude）会在启动/执行工具前弹出需要用户选择的提示；
                 // 检测到后直接展示卡片，保留用户输入以便确认后继续发送。
-                if await sessionManager.checkAndUpdateTerminalChoicePrompt(for: currentAI) != nil {
-                    await MainActor.run {
-                        isLoading = false
-                        streamingMessageId = nil
+                //
+                // ⚡ JSON Stream 模式下 Claude 的聊天消息走 headless 进程（不走 tmux），
+                // tmux 终端里的权限提示与聊天路径无关，跳过检测。
+                let useHeadless = appState.useJSONStreamMode && currentAI.type == .claude && !isTerminalCommand
+                if !useHeadless {
+                    if await sessionManager.checkAndUpdateTerminalChoicePrompt(for: currentAI) != nil {
+                        await MainActor.run {
+                            isLoading = false
+                            streamingMessageId = nil
+                        }
+                        return
                     }
-                    return
                 }
 
                 await MainActor.run {
@@ -403,11 +473,11 @@ struct AIChatView: View {
             do {
                 if isSessionRunning {
                     // 停止会话
-                    try await sessionManager.stopSession(for: aiSnapshot)
+                    try await AIStreamEngineRouter.active.stopSession(for: aiSnapshot)
                     appState.setAIActive(false, for: aiSnapshot.id)
                 } else {
                     // 启动会话
-                    try await sessionManager.startSession(for: aiSnapshot)
+                    try await AIStreamEngineRouter.active.startSession(for: aiSnapshot)
                     appState.setAIActive(true, for: aiSnapshot.id)
                     appState.setTerminalInteractive(true, for: aiSnapshot.id)
                     let systemMessage = Message.systemMessage("🟢 \(aiSnapshot.name) session started in \(aiSnapshot.shortPath)")
@@ -497,7 +567,8 @@ struct AIChatBubbleView: View {
                 }
                 
                 VStack(alignment: isUser ? .trailing : .leading, spacing: 4) {
-                    Text(message.content)
+                    Text(Self.markdownText(message.content))
+                        .textSelection(.enabled)
                         .padding(12)
                         .background(isUser ? Color.accentColor : Color.gray.opacity(0.12))
                         .foregroundColor(isUser ? .white : .primary)
@@ -531,6 +602,15 @@ struct AIChatBubbleView: View {
                     .frame(width: containerWidth * 0.10)
             }
         }
+    }
+
+    /// Markdown → AttributedString；解析失败时回退为纯文本
+    static func markdownText(_ raw: String) -> AttributedString {
+        if let md = try? AttributedString(markdown: raw,
+                                           options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace)) {
+            return md
+        }
+        return AttributedString(raw)
     }
 }
 
