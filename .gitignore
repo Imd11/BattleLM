@@ -20,6 +20,10 @@ build/
 .cache/
 .home/
 .sandbox_home/
+.sandboxhome/
+
+# Node
+node_modules/
 
 # IDE
 .idea/

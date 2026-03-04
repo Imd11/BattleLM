@@ -16,11 +16,29 @@ struct AIChatView: View {
     @State private var isSubmittingTerminalChoice: Bool = false
     @State private var isInputFocused: Bool = false
     
-    private let inputControlHeight: CGFloat = 30
+    private var canSend: Bool {
+        !isLoading
+        && !(isAwaitingTerminalChoice && !supportsHeadlessChat)
+        && !inputText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
 
     private var currentAI: AIInstance {
         appState.aiInstance(for: ai.id) ?? ai
     }
+
+    private var supportsHeadlessChat: Bool {
+        switch currentAI.type {
+        case .claude, .codex, .gemini, .qwen:
+            return true
+        default:
+            return false
+        }
+    }
+
+    @State private var isStartHovered = false
+    @State private var isAttachHovered = false
+    @State private var isSendHovered = false
+    @State private var isFileTreeHovered = false
 
     private var isSessionRunning: Bool {
         sessionManager.sessionStatus[ai.id] == .running
@@ -62,16 +80,20 @@ struct AIChatView: View {
                 
                 Spacer()
                 
-                // 正文的三点动画已表示 AI 在思考，不需要重复的 spinner
-                
                 // 启动/停止按钮
                 Button {
                     toggleSession()
                 } label: {
                     Image(systemName: isSessionRunning ? "stop.circle" : "play.circle")
                         .font(.title2)
+                        .padding(4)
+                        .background(
+                            Circle()
+                                .fill(isStartHovered ? Color.primary.opacity(0.08) : Color.clear)
+                        )
                 }
                 .buttonStyle(.plain)
+                .onHover { isStartHovered = $0 }
                 .disabled(sessionManager.sessionStatus[ai.id] == .starting)
                 .help(isSessionRunning ? "Stop AI" : "Start AI")
             }
@@ -110,7 +132,7 @@ struct AIChatView: View {
                                 if isLoading && streamingMessageId == nil && !isAwaitingTerminalChoice {
                                     HStack(alignment: .center, spacing: 12) {
                                         Spacer()
-                                            .frame(width: geometry.size.width * 0.10)
+                                            .frame(width: geometry.size.width * 0.15)
 
                                         AILogoView(aiType: currentAI.type, size: 28)
 
@@ -119,7 +141,7 @@ struct AIChatView: View {
                                         Spacer()
 
                                         Spacer()
-                                            .frame(width: geometry.size.width * 0.10)
+                                            .frame(width: geometry.size.width * 0.15)
                                     }
                                     .id("thinking-indicator")
                                 }
@@ -163,14 +185,13 @@ struct AIChatView: View {
             })
 
             // ⚡ Headless 模式下不显示终端确认卡片（没有 tmux 会话产生 prompt）
-            let isHeadlessClaude = appState.useJSONStreamMode && currentAI.type == .claude
-            if let prompt = terminalChoicePrompt, !isHeadlessClaude {
+            if let prompt = terminalChoicePrompt, !supportsHeadlessChat {
                 TerminalChoicePromptCard(
                     aiName: currentAI.name,
                     prompt: prompt,
                     isSubmitting: isSubmittingTerminalChoice,
                     onOpenTerminal: {
-                        appState.showTerminalPanel = true
+                        // Terminal panel removed — using headless bridge
                     },
                     onSelect: { option in
                         guard !isSubmittingTerminalChoice else { return }
@@ -192,14 +213,11 @@ struct AIChatView: View {
                 .padding(.horizontal)
                 .padding(.vertical, 10)
             }
-            // 输入面板
-                HStack(alignment: .center, spacing: 8) {
-                    // 快捷指令按钮
-                    SlashCommandMenu(ai: currentAI) { command in
-                        handleSlashCommand(command)
-                    }
-                    .frame(width: inputControlHeight, height: inputControlHeight, alignment: .center)
-                    
+            // 输入面板 — 两行布局，用 GeometryReader 匹配聊天气泡的左右边距
+            GeometryReader { inputGeo in
+                let sideInset = 16 + inputGeo.size.width * 0.15
+                VStack(spacing: 0) {
+                    // ── Row 1: 文本输入 ──
                     ChatTextField(
                         placeholder: "Ask \(currentAI.name) something...",
                         text: $inputText,
@@ -214,40 +232,61 @@ struct AIChatView: View {
                             }
                         }
                     )
-                    .frame(minHeight: inputControlHeight)
-                    // 允许在会话启动期间先输入；发送会自动启动会话
+                    .frame(minHeight: 36)
                     .disabled(isLoading)
+                    .padding(.horizontal, 12)
+                    .padding(.top, 10)
+                    .padding(.bottom, 6)
                     
-                    // 附件按钮
-                    Button {
-                        attachFile()
-                    } label: {
-                        Image(systemName: "paperclip")
-                            .font(.system(size: 14, weight: .medium))
-                            .foregroundColor(.secondary)
+                    // ── Row 2: 工具栏 ──
+                    HStack(spacing: 8) {
+                        // 附件按钮
+                        Button {
+                            attachFile()
+                        } label: {
+                            Image(systemName: "paperclip")
+                                .font(.system(size: 13, weight: .medium))
+                                .foregroundColor(.secondary)
+                        }
+                        .buttonStyle(.plain)
+                        .onHover { isAttachHovered = $0 }
+                        .frame(width: 24, height: 24, alignment: .center)
+                        .background(
+                            RoundedRectangle(cornerRadius: 6)
+                                .fill(isAttachHovered ? Color.primary.opacity(0.08) : Color.clear)
+                        )
+                        .help("Attach file path")
+                        
+                        // 模型选择器
+                        ModelSelectorView(
+                            aiType: currentAI.type,
+                            aiId: ai.id
+                        )
+                        
+                        Spacer()
+                        
+                        // 发送按钮
+                        Button {
+                            sendMessage()
+                        } label: {
+                            Image(systemName: "arrow.up.circle.fill")
+                                .font(.system(size: 22, weight: .semibold))
+                                .foregroundColor(canSend ? Color(hex: "#A3390E") : Color.gray.opacity(0.4))
+                                .scaleEffect(isSendHovered && canSend ? 1.1 : 1.0)
+                                .animation(.easeInOut(duration: 0.12), value: isSendHovered)
+                        }
+                        .disabled(!canSend)
+                        .buttonStyle(.plain)
+                        .onHover { isSendHovered = $0 }
                     }
-                    .buttonStyle(.plain)
-                    .frame(width: inputControlHeight, height: inputControlHeight, alignment: .center)
-                    .help("Attach file path")
-                    
-                    Button {
-                        sendMessage()
-                    } label: {
-                        Image(systemName: "arrow.up.circle.fill")
-                            .font(.system(size: 22, weight: .semibold))
-                            .foregroundColor(Color(hex: "#A3390E"))
-                    }
-                    .frame(width: inputControlHeight, height: inputControlHeight, alignment: .center)
-                    .disabled(isLoading || (isAwaitingTerminalChoice && !(appState.useJSONStreamMode && currentAI.type == .claude)) || inputText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-                    .buttonStyle(.plain)
+                    .padding(.horizontal, 12)
+                    .padding(.bottom, 8)
                 }
-                .padding(.horizontal, 12)
-                .padding(.vertical, 10)
                 .background(
-                    RoundedRectangle(cornerRadius: 20)
+                    RoundedRectangle(cornerRadius: 16)
                         .fill(Color(.windowBackgroundColor))
                         .overlay(
-                            RoundedRectangle(cornerRadius: 20)
+                            RoundedRectangle(cornerRadius: 16)
                                 .stroke(
                                     isInputFocused ? Color.accentColor.opacity(0.6) : Color.gray.opacity(0.25),
                                     lineWidth: isInputFocused ? 1.5 : 1
@@ -266,9 +305,11 @@ struct AIChatView: View {
                         NSCursor.pop()
                     }
                 }
-                .padding(.horizontal, 40)
+                .padding(.horizontal, sideInset)
                 .padding(.top, 6)
                 .padding(.bottom, 16)
+            }
+            .frame(height: 96)  // 两行布局需要更高
             // 背景色统一由外层 VStack 控制
         }
         .background(Color(.windowBackgroundColor))
@@ -291,17 +332,7 @@ struct AIChatView: View {
         NSApp.keyWindow?.makeFirstResponder(nil)
     }
     
-    private func handleSlashCommand(_ command: String) {
-        switch command {
-        case "/clear":
-            appState.clearMessages(for: currentAI.id)
-            
-        default:
-            // 其余 slash command 交给终端执行（例如 /status /model /stats）
-            inputText = command
-            sendMessage()
-        }
-    }
+    // /clear 已移至右键菜单或顶部栏
     
     private func attachFile() {
         let panel = NSOpenPanel()
@@ -324,9 +355,9 @@ struct AIChatView: View {
         guard !isLoading, !trimmed.isEmpty else { return }
 
         // 若终端正在等待用户确认（信任/权限等），先让用户完成确认再发送（保留输入框内容）
-        // ⚡ JSON Stream 模式下 Claude 的非 slash command 消息走 headless，tmux 提示无关
+        // ⚡ Headless JSON 流模式下，非 slash command 消息不依赖 tmux 提示
         let isTerminalCommand = trimmed.hasPrefix("/")
-        let headlessBypass = appState.useJSONStreamMode && currentAI.type == .claude && !isTerminalCommand
+        let headlessBypass = supportsHeadlessChat && !isTerminalCommand
         guard !isAwaitingTerminalChoice || headlessBypass else { return }
 
         let question = trimmed
@@ -341,20 +372,15 @@ struct AIChatView: View {
                 if !hasSession {
                     try await AIStreamEngineRouter.active.startSession(for: currentAI)
                     appState.setAIActive(true, for: currentAI.id)
-                    // ⚡ Headless Claude 不需要终端面板
-                    if appState.useJSONStreamMode && currentAI.type == .claude {
-                        appState.showTerminalPanel = false
-                    } else {
-                        appState.setTerminalInteractive(true, for: currentAI.id)
-                    }
+                    appState.setTerminalInteractive(true, for: currentAI.id)
                 }
 
                 // 某些 CLI（尤其 Claude）会在启动/执行工具前弹出需要用户选择的提示；
                 // 检测到后直接展示卡片，保留用户输入以便确认后继续发送。
                 //
-                // ⚡ JSON Stream 模式下 Claude 的聊天消息走 headless 进程（不走 tmux），
+                // ⚡ Headless JSON 流模式下的聊天消息不走 tmux，
                 // tmux 终端里的权限提示与聊天路径无关，跳过检测。
-                let useHeadless = appState.useJSONStreamMode && currentAI.type == .claude && !isTerminalCommand
+                let useHeadless = supportsHeadlessChat && !isTerminalCommand
                 if !useHeadless {
                     if await sessionManager.checkAndUpdateTerminalChoicePrompt(for: currentAI) != nil {
                         await MainActor.run {
@@ -502,7 +528,7 @@ struct AIChatBubbleView: View {
     }
     
     var maxBubbleWidth: CGFloat {
-        containerWidth * 0.7
+        containerWidth * 0.60
     }
     
     @ViewBuilder
@@ -525,7 +551,7 @@ struct AIChatBubbleView: View {
             // 来自 AI 的“终端面板输出”（例如 /status），需要显示 AI 头像并保持等宽排版。
             HStack(alignment: .top, spacing: 12) {
                 Spacer()
-                    .frame(width: containerWidth * 0.10)
+                    .frame(width: containerWidth * 0.15)
 
                 if let ai = ai {
                     AILogoView(aiType: ai.type, size: 28)
@@ -548,13 +574,13 @@ struct AIChatBubbleView: View {
 
                 Spacer()
                 Spacer()
-                    .frame(width: containerWidth * 0.10)
+                    .frame(width: containerWidth * 0.15)
             }
         } else {
             HStack(alignment: .top, spacing: 12) {
                 // 左侧空白（10%）
                 Spacer()
-                    .frame(width: containerWidth * 0.10)
+                    .frame(width: containerWidth * 0.15)
                 
                 // 用户消息：左边额外空白推向右边
                 if isUser {
@@ -599,7 +625,7 @@ struct AIChatBubbleView: View {
                 
                 // 右侧空白（10%）
                 Spacer()
-                    .frame(width: containerWidth * 0.10)
+                    .frame(width: containerWidth * 0.15)
             }
         }
     }

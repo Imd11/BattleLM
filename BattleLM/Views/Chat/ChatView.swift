@@ -22,7 +22,6 @@ struct ChatView: View {
             // 消息列表
             MessageListView()
             
-            Divider()
             
             // 输入框（带模式选择器）
             MessageInputView(
@@ -61,6 +60,7 @@ struct ChatView: View {
 struct ChatHeaderView: View {
     @EnvironmentObject var appState: AppState
     @ObservedObject private var discussionManager = DiscussionManager.shared
+    @State private var isFileTreeHovered = false
     
     var chat: GroupChat? {
         appState.selectedGroupChat
@@ -159,7 +159,6 @@ struct ChatHeaderView: View {
                         .cornerRadius(8)
                 }
             }
-            
         }
         .padding()
         // 背景色统一由外层 VStack 控制

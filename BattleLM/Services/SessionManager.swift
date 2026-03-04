@@ -193,7 +193,7 @@ class SessionManager: ObservableObject {
                     "-x", "120",
                     "-y", "40",
                     "-c", workDir,
-                    "/bin/zsh", "-lc", ai.type.cliCommand
+                    "/bin/zsh", "-lc", buildCLICommand(for: ai)
                 ])
 
                 // 设置无限滚动历史缓冲区（0 = 无限制）
@@ -222,13 +222,26 @@ class SessionManager: ObservableObject {
             // 启动“终端交互提示”监控（例如 Claude 的信任/权限确认）
             await startTerminalPromptMonitorIfNeeded(for: ai)
 
-            print("✅ Session started: \(sessionName) for \(ai.name) in \(workDir)")
+            print("✅ Session started: \(sessionName) for \(ai.name) in \(workDir) [model: \(ai.effectiveModel)]")
         } catch {
             await MainActor.run {
                 sessionStatus[ai.id] = .error
             }
             throw error
         }
+    }
+    
+    /// 构建 CLI 启动命令，包含用户选择的模型
+    private func buildCLICommand(for ai: AIInstance) -> String {
+        var cmd = ai.type.cliCommand  // "claude" / "codex" / "gemini" / etc.
+        
+        // 始终传递 --model 参数，确保用户选择的模型生效
+        let model = ai.effectiveModel
+        if !model.isEmpty {
+            cmd += " --model \(model)"
+        }
+        
+        return cmd
     }
     
     /// 停止 tmux 会话

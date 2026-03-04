@@ -19,7 +19,7 @@ class AppState: ObservableObject {
     @Published var selectedAIId: UUID?
     
     /// 是否显示终端面板
-    @Published var showTerminalPanel: Bool = true
+    @Published var showTerminalPanel: Bool = false
     
     /// 应用外观
     @Published var appAppearance: AppAppearance = .system
@@ -44,22 +44,6 @@ class AppState: ObservableObject {
     @Published var showSettingsSheet: Bool = false
     @Published var showPairingSheet: Bool = false
 
-    // MARK: - Engine Mode
-
-    /// JSON Stream 模式开关（true = 走 headless 进程 + NDJSON，false = 走旧 tmux 路径）
-    /// ⚠️ 测试阶段默认 true，验证完毕后可改回 false。Phase 1 仅影响 Claude 的普通问答。
-    @Published var useJSONStreamMode: Bool = {
-        // 如果用户从未手动设置过，默认开启（测试阶段）
-        if UserDefaults.standard.object(forKey: "useJSONStreamMode") == nil {
-            return true
-        }
-        return UserDefaults.standard.bool(forKey: "useJSONStreamMode")
-    }() {
-        didSet {
-            UserDefaults.standard.set(useJSONStreamMode, forKey: "useJSONStreamMode")
-        }
-    }
-
     // MARK: - CLI Preflight
 
     /// 各 AI CLI 的可用性缓存（启动后预热，Add AI Sheet 直接读缓存避免卡顿）
@@ -67,6 +51,11 @@ class AppState: ObservableObject {
 
     /// 是否正在进行全量检测
     @Published var isDetectingCLI: Bool = false
+
+    // MARK: - Token Usage
+
+    /// Token 用量监控器（监听 Claude / Codex 本地日志）
+    let tokenUsageMonitor = TokenUsageMonitor()
     
     // MARK: - Computed Properties
     
@@ -88,7 +77,8 @@ class AppState: ObservableObject {
     // MARK: - Initialization
     
     init() {
-        // 启动时为空，不加载示例数据
+        // 启动 token 用量监控
+        tokenUsageMonitor.startMonitoring()
     }
 
     func isTerminalInteractive(for aiId: UUID) -> Bool {
@@ -216,6 +206,21 @@ class AppState: ObservableObject {
     func clearMessages(for aiId: UUID) {
         updateAIInstance(aiId) { ai in
             ai.messages.removeAll()
+        }
+    }
+    
+    /// 设置 AI 实例选中的模型
+    func setSelectedModel(_ modelId: String?, for aiId: UUID) {
+        updateAIInstance(aiId) { ai in
+            ai.selectedModel = modelId
+            ai.selectedReasoningEffort = nil  // 切换模型时重置推理深度
+        }
+    }
+    
+    /// 设置 AI 实例选中的推理深度
+    func setSelectedReasoningEffort(_ effort: ReasoningEffort?, for aiId: UUID) {
+        updateAIInstance(aiId) { ai in
+            ai.selectedReasoningEffort = effort
         }
     }
     

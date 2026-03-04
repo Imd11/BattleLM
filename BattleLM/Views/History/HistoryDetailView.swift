@@ -155,7 +155,7 @@ private struct HistoryMessageBubble: View {
         HStack(alignment: .top, spacing: 12) {
             // Left margin (10%)
             Spacer()
-                .frame(width: containerWidth * 0.10)
+                .frame(width: containerWidth * 0.04)
 
             // User messages push right
             if isUser {
@@ -222,7 +222,7 @@ private struct HistoryMessageBubble: View {
 
                 // Message bubble (matching MessageBubbleView)
                 if !message.content.isEmpty {
-                    Text(message.content)
+                    Text(Self.markdownText(message.content))
                         .padding(12)
                         .background(bubbleBackground)
                         .foregroundColor(bubbleTextColor)
@@ -247,7 +247,7 @@ private struct HistoryMessageBubble: View {
 
             // Right margin (10%)
             Spacer()
-                .frame(width: containerWidth * 0.10)
+                .frame(width: containerWidth * 0.04)
         }
     }
 
@@ -261,5 +261,14 @@ private struct HistoryMessageBubble: View {
 
     private var bubbleTextColor: Color {
         isUser ? .white : .primary
+    }
+
+    /// Markdown → AttributedString; fallback to plain text
+    static func markdownText(_ raw: String) -> AttributedString {
+        if let md = try? AttributedString(markdown: raw,
+                                           options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace)) {
+            return md
+        }
+        return AttributedString(raw)
     }
 }

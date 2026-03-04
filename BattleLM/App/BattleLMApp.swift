@@ -54,18 +54,6 @@ struct BattleLMApp: App {
                 .keyboardShortcut("n", modifiers: [.command, .shift])
             }
             
-            // 视图菜单 - 终端切换
-            CommandGroup(after: .sidebar) {
-                Button(appState.showTerminalPanel ? "Hide Terminal" : "Show Terminal") {
-                    withAnimation(.easeInOut(duration: 0.2)) {
-                        appState.showTerminalPanel.toggle()
-                    }
-                }
-                .keyboardShortcut("t", modifiers: [.command])
-                
-                Divider()
-            }
-            
             // 设置
             CommandGroup(replacing: .appSettings) {
                 Button("Settings...") {

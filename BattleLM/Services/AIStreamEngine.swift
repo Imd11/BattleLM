@@ -1,7 +1,7 @@
 // BattleLM/Services/AIStreamEngine.swift
 // JSON Stream Engine — 绕过 tmux，直接消费 CLI 的结构化输出
 //
-// Phase 1: 仅 Claude 的普通问答（Solo/1:1）走此路径。
+// 当前默认路径：Claude/Codex/Gemini/Qwen 走 headless JSON 流。
 // 不支持的 AI 类型 / slash command / JSONStream 失败时，自动 fallback 到 LegacyTmuxEngine。
 
 import Foundation
@@ -225,10 +225,11 @@ class JSONStreamEngine: AIStreamEngine {
                                          bridgeScript: "qwen-bridge.mjs")
         case .gemini:
             try await spawnCLIDirect(message: message, ai: ai, maxWait: maxWait, onUpdate: onUpdate,
-                                     cliName: "gemini", buildArgs: Self.geminiArgs(message: message))
+                                     cliName: "gemini",
+                                     buildArgs: Self.geminiArgs(message: message, model: ai.effectiveModel))
         case .codex:
-            try await spawnCLIDirect(message: message, ai: ai, maxWait: maxWait, onUpdate: onUpdate,
-                                     cliName: "codex", buildArgs: Self.codexArgs(message: message))
+            try await spawnBridgeProcess(message: message, ai: ai, maxWait: maxWait, onUpdate: onUpdate,
+                                         bridgeScript: "codex-bridge.mjs")
         default:
             throw SessionError.commandFailed("\(ai.type) does not support headless mode")
         }
@@ -236,14 +237,18 @@ class JSONStreamEngine: AIStreamEngine {
 
     // MARK: - CLI Args Builders
 
-    private static func geminiArgs(message: String) -> [String] {
-        // gemini "query" --output-format stream-json --sandbox false --yolo
-        return [message, "--output-format", "stream-json", "--sandbox", "false", "--yolo"]
+    private static func geminiArgs(message: String, model: String) -> [String] {
+        // gemini "query" --model <model> --output-format stream-json --sandbox false --yolo
+        var args = [message, "--output-format", "stream-json", "--sandbox", "false", "--yolo"]
+        if !model.isEmpty {
+            args += ["--model", model]
+        }
+        return args
     }
 
     private static func codexArgs(message: String) -> [String] {
-        // codex exec "query" --json --full-auto
-        return ["exec", message, "--json", "--full-auto"]
+        // codex exec "query" --json --full-auto --skip-git-repo-check
+        return ["exec", message, "--json", "--full-auto", "--skip-git-repo-check"]
     }
 
     // MARK: - Claude SDK Bridge (Node.js)
@@ -378,10 +383,17 @@ class JSONStreamEngine: AIStreamEngine {
                 try proc.run()
 
                 // 向 bridge 发送 JSON 请求，然后关闭 stdin
-                let request: [String: Any] = [
+                var request: [String: Any] = [
                     "prompt": message,
-                    "cwd": workDir
+                    "cwd": workDir,
+                    "model": ai.effectiveModel
                 ]
+                if let effort = ai.effectiveEffort {
+                    request["reasoningEffort"] = effort.rawValue
+                }
+                if ai.thinkingEnabled {
+                    request["thinkingEnabled"] = true
+                }
                 if let jsonData = try? JSONSerialization.data(withJSONObject: request),
                    let jsonStr = String(data: jsonData, encoding: .utf8) {
                     stdinPipe.fileHandleForWriting.write((jsonStr + "\n").data(using: .utf8)!)
@@ -788,19 +800,9 @@ class JSONStreamEngine: AIStreamEngine {
 
 // MARK: - Engine Router
 
-/// 全局路由：根据 AppState 开关和 AI 类型选择引擎。
+/// 全局路由：固定走 JSONStreamEngine（默认管道）。
 enum AIStreamEngineRouter {
     static var active: any AIStreamEngine {
-        let useJSON = Thread.isMainThread
-            ? _readSetting()
-            : DispatchQueue.main.sync { _readSetting() }
-        return useJSON ? JSONStreamEngine.shared : LegacyTmuxEngine()
-    }
-
-    private static func _readSetting() -> Bool {
-        if UserDefaults.standard.object(forKey: "useJSONStreamMode") == nil {
-            return true
-        }
-        return UserDefaults.standard.bool(forKey: "useJSONStreamMode")
+        JSONStreamEngine.shared
     }
 }

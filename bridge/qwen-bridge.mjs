@@ -118,6 +118,7 @@ async function main() {
     const {
         prompt,
         cwd = process.cwd(),
+        model,
     } = request;
 
     if (!prompt) {
@@ -138,6 +139,7 @@ async function main() {
 
     // Qwen CLI stream-json + include-partial-messages 模式（逐 token 流式）
     const args = ["-p", prompt, "--output-format", "stream-json", "--include-partial-messages", "--yolo"];
+    if (model) args.push("--model", model);
 
     return new Promise((resolve, reject) => {
         const child = spawn(qwenPath, args, {
