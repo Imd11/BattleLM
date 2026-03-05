@@ -275,12 +275,12 @@ class _Composer extends StatelessWidget {
                 border: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide.none),
                 contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
               ),
-              onSubmitted: (v) => _send(context),
+              onSubmitted: (v) => _send(),
             ),
           ),
           const SizedBox(width: 10),
           IconButton(
-            onPressed: () => _send(context),
+            onPressed: () => _send(),
             icon: const Icon(Icons.arrow_upward_rounded),
             style: IconButton.styleFrom(
               backgroundColor: Theme.of(context).colorScheme.primary,
@@ -295,7 +295,7 @@ class _Composer extends StatelessWidget {
     );
   }
 
-  void _send(BuildContext context) {
+  void _send() {
     final text = controller.text.trim();
     if (text.isEmpty) return;
     controller.clear();
