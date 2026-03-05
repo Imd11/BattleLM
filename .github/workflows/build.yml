@@ -2,11 +2,14 @@ name: Build BattleLM
 
 on:
   push:
-    branches: [main, develop]
+    branches:
+      - main
+      - develop
     tags:
       - 'v*'
   pull_request:
-    branches: [main]
+    branches:
+      - main
 
 jobs:
   build-macos:
