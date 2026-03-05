@@ -88,6 +88,12 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
         with:
@@ -102,6 +108,7 @@ jobs:
       - name: Install dependencies
         run: |
           cd flutter_app
+          set -o pipefail
           flutter pub get
           flutter build apk --release --verbose 2>&1 | tee build.log
 
@@ -117,6 +124,7 @@ jobs:
         with:
           name: battle-lm-android
           path: flutter_app/build/app/outputs/flutter-apk/app-release.apk
+          if-no-files-found: error
 
   build-ios:
     runs-on: macos-latest
