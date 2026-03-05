@@ -1,0 +1,22 @@
+{
+  "build": {
+    "beforeBuildCommand": "flutter build linux --release",
+    "beforeDevCommand": "flutter run",
+    "devUrl": "http://localhost:8080",
+    "frontendDist": "../build/linux/x64/release/bundle"
+  },
+  "productName": "BattleLM",
+  "version": "1.0.0",
+  "identifier": "com.battlelm.app",
+  "plugins": {},
+  "windows": [
+    {
+      "webviewInstallMode": {
+        "type": "downloadBootstrapper"
+      },
+      "certificateThumbprint": null,
+      "digestAlgorithm": "sha256",
+      "timestampUrl": ""
+    }
+  ]
+}
