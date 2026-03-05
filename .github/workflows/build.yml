@@ -146,11 +146,21 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           path: artifacts
+          pattern: battle-lm-*
+          merge-multiple: false
+
+      - name: List downloaded files
+        run: ls -la artifacts/
 
       - name: Create Release
         uses: softprops/action-gh-release@v1
         with:
-          files: artifacts/**/*
+          files: |
+            artifacts/battle-lm-macos/*
+            artifacts/battle-lm-windows/*
+            artifacts/battle-lm-linux/*
+            artifacts/battle-lm-android/*
+            artifacts/battle-lm-ios/*
           draft: false
           prerelease: false
         env:
