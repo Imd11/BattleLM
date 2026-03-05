@@ -86,16 +86,26 @@ jobs:
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
         with:
-          flutter-version: '3.24.0'
+          flutter-version: '3.24.5'
 
       - name: Setup Android SDK
         uses: android-actions/setup-android@v2
 
-      - name: Install dependencies
-        run: cd flutter_app && flutter pub get
+      - name: Accept Android licenses
+        run: yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --licenses || true
 
-      - name: Build Android
-        run: cd flutter_app && flutter build apk --release
+      - name: Install dependencies
+        run: |
+          cd flutter_app
+          flutter pub get
+          flutter build apk --release --verbose 2>&1 | tee build.log
+
+      - name: Upload build log
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-build-log
+          path: flutter_app/build.log
 
       - name: Upload Android artifact
         uses: actions/upload-artifact@v4
