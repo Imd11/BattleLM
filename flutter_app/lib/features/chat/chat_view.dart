@@ -294,6 +294,13 @@ class _Composer extends StatelessWidget {
       ),
     );
   }
+
+  void _send(BuildContext context) {
+    final text = controller.text.trim();
+    if (text.isEmpty) return;
+    controller.clear();
+    onSend(text);
+  }
 }
 
 class _ThinkingBubble extends StatelessWidget {
@@ -326,12 +333,5 @@ class _ThinkingBubble extends StatelessWidget {
         ],
       ),
     );
-  }
-
-  void _send(BuildContext context) {
-    final text = controller.text.trim();
-    if (text.isEmpty) return;
-    controller.clear();
-    onSend(text);
   }
 }
