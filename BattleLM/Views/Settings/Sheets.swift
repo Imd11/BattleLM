@@ -788,6 +788,7 @@ struct AISelectionRow: View {
 enum SettingsTab: String, CaseIterable, Identifiable {
     case appearance = "Appearance"
     case usage = "Usage"
+    case defaultModels = "Default Models"
     case shortcuts = "Shortcuts"
     
     var id: String { rawValue }
@@ -796,6 +797,7 @@ enum SettingsTab: String, CaseIterable, Identifiable {
         switch self {
         case .appearance: return "paintbrush"
         case .usage: return "chart.bar.fill"
+        case .defaultModels: return "slider.horizontal.3"
         case .shortcuts: return "keyboard"
         }
     }
@@ -804,9 +806,10 @@ enum SettingsTab: String, CaseIterable, Identifiable {
 struct SettingsSheet: View {
     @EnvironmentObject var appState: AppState
     @Environment(\.dismiss) var dismiss
-    @Environment(\.colorScheme) var colorScheme
     @State private var selectedTab: SettingsTab = .appearance
     @State private var isCloseHovered = false
+    @State private var hasInitializedDefaultModelDraft = false
+    @State private var defaultModelDraft: [AIType: String] = [:]
     
     var body: some View {
         HStack(spacing: 0) {
@@ -861,6 +864,8 @@ struct SettingsSheet: View {
                             appearanceContent
                         case .usage:
                             TokenUsageView(monitor: appState.tokenUsageMonitor)
+                        case .defaultModels:
+                            defaultModelsContent
                         case .shortcuts:
                             shortcutsContent
                         }
@@ -871,12 +876,8 @@ struct SettingsSheet: View {
             }
         }
         .frame(width: 750, height: 560)
-        .onChange(of: colorScheme) { _ in
-            // 当系统 colorScheme 变化时（用户选择"跟随系统"模式后，系统主题切换）
-            // 需要同步更新终端主题
-            if appState.appAppearance == .system {
-                updateTerminalThemeIfNeeded()
-            }
+        .onAppear {
+            initializeDefaultModelDraftIfNeeded()
         }
     }
     
@@ -893,10 +894,70 @@ struct SettingsSheet: View {
                         isSelected: appState.appAppearance == appearance
                     ) {
                         appState.appAppearance = appearance
-                        updateTerminalThemeIfNeeded()
                     }
                 }
             }
+        }
+    }
+
+    private var configurableDefaultAITypes: [AIType] {
+        AIType.userVisibleCases.filter { $0 != .qwen && $0.availableModels.count > 1 }
+    }
+
+    private var defaultModelsContent: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Default Models")
+                .font(.headline)
+
+            Text("Used when a chat is set to \"Use Default\" and for newly created AI instances.")
+                .font(.caption)
+                .foregroundColor(.secondary)
+
+            ForEach(configurableDefaultAITypes) { type in
+                HStack(spacing: 10) {
+                    AILogoView(aiType: type, size: 16)
+
+                    Text(type.displayName)
+                        .font(.system(size: 13, weight: .medium))
+                        .frame(width: 74, alignment: .leading)
+
+                    Picker(
+                        "",
+                        selection: Binding(
+                            get: { defaultModelDraft[type] ?? appState.defaultModelId(for: type) },
+                            set: { defaultModelDraft[type] = $0 }
+                        )
+                    ) {
+                        ForEach(type.availableModels, id: \.id) { model in
+                            Text(model.displayName).tag(model.id)
+                        }
+                    }
+                    .labelsHidden()
+                    .frame(maxWidth: 320, alignment: .leading)
+
+                    Spacer()
+
+                    Button("Reset") {
+                        defaultModelDraft[type] = type.defaultModelId
+                    }
+                    .buttonStyle(.borderless)
+                    .disabled((defaultModelDraft[type] ?? appState.defaultModelId(for: type)) == type.defaultModelId)
+                }
+            }
+
+            Divider()
+
+            HStack {
+                Spacer()
+                Button("Save") {
+                    saveDefaultModelDraft()
+                }
+                .buttonStyle(.borderedProminent)
+                .disabled(!hasUnsavedDefaultModelChanges)
+            }
+        }
+        .onAppear {
+            initializeDefaultModelDraftIfNeeded()
         }
     }
     
@@ -906,29 +967,38 @@ struct SettingsSheet: View {
             Text("Keyboard Shortcuts")
                 .font(.headline)
             
-            ShortcutRow(action: "Toggle Terminal", shortcut: "⌘ T")
             ShortcutRow(action: "New AI Instance", shortcut: "⌘ N")
             ShortcutRow(action: "Settings", shortcut: "⌘ ,")
         }
     }
     
     // MARK: - Helpers
-    private func updateTerminalThemeIfNeeded() {
-        // 当 App 主题切换时，强制重置终端主题为对应模式的默认主题
-        let shouldUseDark: Bool
-        switch appState.appAppearance {
-        case .dark:
-            shouldUseDark = true
-        case .light:
-            shouldUseDark = false
-        case .system:
-            shouldUseDark = colorScheme == .dark
+    private func initializeDefaultModelDraftIfNeeded() {
+        guard !hasInitializedDefaultModelDraft else { return }
+        hasInitializedDefaultModelDraft = true
+        defaultModelDraft = Dictionary(
+            uniqueKeysWithValues: configurableDefaultAITypes.map { type in
+                (type, appState.defaultModelId(for: type))
+            }
+        )
+    }
+
+    private var hasUnsavedDefaultModelChanges: Bool {
+        configurableDefaultAITypes.contains { type in
+            (defaultModelDraft[type] ?? appState.defaultModelId(for: type)) != appState.defaultModelId(for: type)
         }
-        
-        // 如果当前主题的明暗模式与新 App 主题不匹配，重置为默认
-        if appState.terminalTheme.isDark != shouldUseDark {
-            appState.terminalTheme = shouldUseDark ? .defaultDark : .defaultLight
+    }
+
+    private func saveDefaultModelDraft() {
+        for type in configurableDefaultAITypes {
+            let targetModelId = defaultModelDraft[type] ?? type.defaultModelId
+            appState.setDefaultModel(targetModelId, for: type)
         }
+        defaultModelDraft = Dictionary(
+            uniqueKeysWithValues: configurableDefaultAITypes.map { type in
+                (type, appState.defaultModelId(for: type))
+            }
+        )
     }
 }
 

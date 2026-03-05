@@ -11,7 +11,11 @@ import UIKit
 @MainActor
 class RemoteConnection: ObservableObject {
     @Published var state: ConnectionState = .disconnected
+    /// Once connected, keep UI stable during transient reconnects.
+    @Published private(set) var hasEverConnected: Bool = false
     @Published private(set) var messagesByAI: [UUID: [MessageDTO]] = [:]
+    /// 1:1 Chat: show a "thinking" indicator after sending until we receive a non-user message.
+    @Published private(set) var pendingAIResponses: Set<UUID> = []
     @Published var currentPrompt: TerminalPromptPayload?
     @Published var aiList: [AIInfoDTO] = []
     @Published var groupChats: [GroupChatDTO] = []
@@ -33,6 +37,8 @@ class RemoteConnection: ObservableObject {
     private var reconnectAttempts = 0
     private let maxReconnectAttempts = 3
     private var lastConnectedDevice: PairedDevice?
+    private var keepAliveTask: Task<Void, Never>?
+    private let keepAliveIntervalSeconds: Double = 25
     
     init() {
         loadPairedDevices()
@@ -63,7 +69,27 @@ class RemoteConnection: ObservableObject {
               let devices = try? JSONDecoder().decode([PairedDevice].self, from: data) else {
             return
         }
-        pairedDevices = devices
+        // Sanitize legacy data:
+        // - historically `id` could be a deviceId (not unique across endpoints) which breaks `ForEach`.
+        // - we now use `endpoint` as the unique identifier.
+        var seenEndpoints: Set<String> = []
+        let normalized = devices.compactMap { device -> PairedDevice? in
+            guard !device.endpoint.isEmpty else { return nil }
+            guard !seenEndpoints.contains(device.endpoint) else { return nil }
+            seenEndpoints.insert(device.endpoint)
+            return PairedDevice(
+                id: device.endpoint,
+                name: device.name,
+                endpoint: device.endpoint,
+                endpointLocal: device.endpointLocal,
+                lastConnected: device.lastConnected
+            )
+        }
+        pairedDevices = normalized
+
+        if let normalizedData = try? JSONEncoder().encode(normalized) {
+            UserDefaults.standard.set(normalizedData, forKey: pairedDevicesKey)
+        }
     }
     
     private func savePairedDevice(_ device: PairedDevice) {
@@ -80,7 +106,7 @@ class RemoteConnection: ObservableObject {
     
     /// Remove a paired device from the list
     func removePairedDevice(_ device: PairedDevice) {
-        pairedDevices.removeAll { $0.id == device.id }
+        pairedDevices.removeAll { $0.endpoint == device.endpoint }
         
         if let data = try? JSONEncoder().encode(pairedDevices) {
             UserDefaults.standard.set(data, forKey: pairedDevicesKey)
@@ -226,6 +252,7 @@ class RemoteConnection: ObservableObject {
         authTimeoutTask = nil
         autoReconnectTask?.cancel()
         autoReconnectTask = nil
+        stopKeepAlive()
         reconnectAttempts = 0
         pairingFallbackEndpoint = nil
         pairingUsedFallback = false
@@ -233,7 +260,9 @@ class RemoteConnection: ObservableObject {
         webSocket = nil
         session = nil
         state = .disconnected
+        hasEverConnected = false
         messagesByAI = [:]
+        pendingAIResponses = []
         groupChats = []
         groupChatErrorMessage = nil
         currentPrompt = nil
@@ -274,6 +303,7 @@ class RemoteConnection: ObservableObject {
     /// 安排自动重连
     private func scheduleAutoReconnect() {
         autoReconnectTask?.cancel()
+        stopKeepAlive()
         
         guard reconnectAttempts < maxReconnectAttempts else {
             // 超过最大重连次数，显示错误
@@ -386,11 +416,13 @@ class RemoteConnection: ObservableObject {
         pairingUsedFallback = false
         reconnectLocalEndpoint = nil
         state = .connected
+        hasEverConnected = true
+        startKeepAliveIfNeeded()
         
         // Save paired device with both endpoints
         if let endpoint = currentEndpoint {
             let device = PairedDevice(
-                id: DeviceIdentity.shared.deviceId,
+                id: endpoint,
                 name: "Mac",
                 endpoint: endpoint,
                 endpointLocal: localEndpoint,
@@ -452,11 +484,13 @@ class RemoteConnection: ObservableObject {
         pairingFallbackEndpoint = nil
         pairingUsedFallback = false
         state = .connected
+        hasEverConnected = true
+        startKeepAliveIfNeeded()
         
         // Save paired device with both endpoints
         if let endpoint = currentEndpoint {
             let device = PairedDevice(
-                id: complete.macDeviceId,
+                id: endpoint,
                 name: complete.macDeviceName,
                 endpoint: endpoint,
                 endpointLocal: localEndpoint,
@@ -504,6 +538,12 @@ class RemoteConnection: ObservableObject {
         }
 
         messagesByAI[payload.aiId] = list
+
+        // Clear "thinking" indicator once we receive a non-user message
+        // (assistant response or system error) for this AI.
+        if payload.message.senderType != "user" {
+            pendingAIResponses.remove(payload.aiId)
+        }
     }
     
     private func handleTerminalPrompt(_ data: Data) {
@@ -586,6 +626,22 @@ class RemoteConnection: ObservableObject {
     
     private func presentableError(_ error: Error) -> String {
         let nsError = error as NSError
+        if nsError.domain == NSURLErrorDomain, nsError.code == NSURLErrorTimedOut {
+            var lines: [String] = []
+            lines.append("Connection timed out.")
+            if pairingUsedFallback {
+                lines.append("LAN direct connection also timed out. Please ensure iPhone and Mac are on the same Wi‑Fi and the Mac app is running.")
+            } else if let hint = pairingFallbackEndpoint {
+                lines.append("Will try LAN direct connection: \(hint)")
+            } else {
+                lines.append("If you are using a tunnel (wss), try scanning the QR code again to get a fresh endpoint.")
+            }
+            if let proxyHint = currentSystemProxyHint() {
+                lines.append(proxyHint)
+            }
+            lines.append("If you have VPN / Wi‑Fi proxy / packet capture enabled, try disabling and retry.")
+            return lines.joined(separator: "\n")
+        }
         if nsError.domain == NSURLErrorDomain, nsError.code == NSURLErrorNotConnectedToInternet {
             var lines: [String] = []
             lines.append("Network unavailable.")
@@ -602,6 +658,21 @@ class RemoteConnection: ObservableObject {
                 lines.append("LAN direct connection also failed. Please ensure iPhone and Mac are on the same Wi-Fi.")
             } else if let hint = pairingFallbackEndpoint {
                 lines.append("Will try LAN direct connection: \(hint)")
+            }
+            return lines.joined(separator: "\n")
+        }
+        if nsError.domain == NSURLErrorDomain, nsError.code == NSURLErrorCannotConnectToHost {
+            var lines: [String] = []
+            lines.append("Cannot connect to server.")
+            if pairingUsedFallback {
+                lines.append("LAN direct connection also failed. Please ensure iPhone and Mac are on the same Wi‑Fi and the Mac app is running.")
+            } else if let hint = pairingFallbackEndpoint {
+                lines.append("Will try LAN direct connection: \(hint)")
+            } else {
+                lines.append("If you are using a tunnel (wss), try scanning the QR code again to get a fresh endpoint.")
+            }
+            if let proxyHint = currentSystemProxyHint() {
+                lines.append(proxyHint)
             }
             return lines.joined(separator: "\n")
         }
@@ -656,10 +727,44 @@ class RemoteConnection: ObservableObject {
     private func resetTransport() {
         authTimeoutTask?.cancel()
         authTimeoutTask = nil
+        stopKeepAlive()
         webSocket?.cancel(with: .goingAway, reason: nil)
         webSocket = nil
         session = nil
         state = .authenticating
+    }
+
+    // MARK: - Keep Alive
+
+    private func startKeepAliveIfNeeded() {
+        guard keepAliveTask == nil else { return }
+        keepAliveTask = Task { [weak self] in
+            guard let self else { return }
+            while !Task.isCancelled {
+                try? await Task.sleep(nanoseconds: UInt64(keepAliveIntervalSeconds * 1_000_000_000))
+                guard !Task.isCancelled else { return }
+                await self.sendKeepAlivePing()
+            }
+        }
+    }
+
+    private func stopKeepAlive() {
+        keepAliveTask?.cancel()
+        keepAliveTask = nil
+    }
+
+    private func sendKeepAlivePing() async {
+        guard state == .connected, webSocket != nil else { return }
+        webSocket?.sendPing { [weak self] error in
+            guard let self else { return }
+            if let error {
+                Task { @MainActor in
+                    if self.state == .connected || self.state == .authenticating {
+                        self.handleReceiveFailure(error)
+                    }
+                }
+            }
+        }
     }
 
     private func isTransportErrorForFallback(_ error: Error) -> Bool {
@@ -723,8 +828,14 @@ class RemoteConnection: ObservableObject {
     
     func sendMessage(_ text: String, to aiId: UUID) async throws {
         guard state == .connected else { return }
+        pendingAIResponses.insert(aiId)
         let payload = SendMessagePayload(aiId: aiId, text: text)
-        try await send(payload)
+        do {
+            try await send(payload)
+        } catch {
+            pendingAIResponses.remove(aiId)
+            throw error
+        }
     }
     
     func submitChoice(_ choice: Int, for aiId: UUID) async throws {
@@ -748,6 +859,10 @@ class RemoteConnection: ObservableObject {
 
     func messages(for aiId: UUID) -> [MessageDTO] {
         messagesByAI[aiId] ?? []
+    }
+
+    func isAwaitingResponse(for aiId: UUID) -> Bool {
+        pendingAIResponses.contains(aiId)
     }
 
     func groupChat(for chatId: UUID) -> GroupChatDTO? {

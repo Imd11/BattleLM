@@ -15,6 +15,7 @@ struct AIInstance: Identifiable, Codable, Equatable, Hashable {
     var messages: [Message] = []   // 1:1 对话消息历史
     var selectedModel: String?     // 用户选择的模型（nil = 使用默认）
     var selectedReasoningEffort: ReasoningEffort?  // 用户选择的推理深度（nil = 使用模型默认）
+    var fallbackDefaultModelId: String?  // 实例默认模型来源（nil = 使用 AIType 内建默认）
     
     // 手动实现 Hashable，只基于 id
     func hash(into hasher: inout Hasher) {
@@ -38,17 +39,31 @@ struct AIInstance: Identifiable, Codable, Equatable, Hashable {
         self.messages = []
         self.selectedModel = nil
         self.selectedReasoningEffort = nil
+        self.fallbackDefaultModelId = nil
+    }
+
+    /// 当前实例默认模型 ID（兼容旧数据：缺失时回退到 AIType 默认）
+    var resolvedDefaultModelId: String {
+        if let fallbackDefaultModelId,
+           type.availableModels.contains(where: { $0.id == fallbackDefaultModelId || $0.actualModelId == fallbackDefaultModelId }) {
+            return fallbackDefaultModelId
+        }
+        return type.defaultModelId
+    }
+
+    private func modelOption(for modelId: String) -> ModelOption? {
+        type.availableModels.first(where: { $0.id == modelId || $0.actualModelId == modelId })
     }
     
     /// 当前选中的 ModelOption
     private var selectedModelOption: ModelOption? {
-        let modelId = selectedModel ?? type.defaultModelId
-        return type.availableModels.first(where: { $0.id == modelId })
+        let modelId = selectedModel ?? resolvedDefaultModelId
+        return modelOption(for: modelId)
     }
     
     /// 当前生效的模型 ID（传给 API 的真实 ID）
     var effectiveModel: String {
-        selectedModelOption?.actualModelId ?? type.defaultModelId
+        selectedModelOption?.actualModelId ?? resolvedDefaultModelId
     }
     
     /// 是否开启 thinking 模式

@@ -15,7 +15,12 @@ struct ModelSelectorView: View {
     }
     
     private var currentDisplayName: String {
-        currentAI?.modelDisplayName ?? aiType.defaultModelId
+        if let currentAI {
+            return currentAI.modelDisplayName
+        }
+        let fallbackDefaultModelId = appState.defaultModelId(for: aiType)
+        return aiType.availableModels.first(where: { $0.id == fallbackDefaultModelId || $0.actualModelId == fallbackDefaultModelId })?.displayName
+            ?? fallbackDefaultModelId
     }
     
     var body: some View {
@@ -49,25 +54,38 @@ struct ModelSelectorView: View {
         let menu = NSMenu(title: "Model")
         
         let models = aiType.availableModels
-        let selectedModelId = currentAI?.effectiveModel ?? aiType.defaultModelId
+        let configuredDefaultModelId = appState.defaultModelId(for: aiType)
+        let normalizedDefaultModelId = models.first(where: { $0.id == configuredDefaultModelId || $0.actualModelId == configuredDefaultModelId })?.id
+            ?? configuredDefaultModelId
+        let selectedModelId = currentAI?.selectedModel
+            ?? currentAI?.resolvedDefaultModelId
+            ?? configuredDefaultModelId
+        let normalizedSelectedModelId = models.first(where: { $0.id == selectedModelId || $0.actualModelId == selectedModelId })?.id
+            ?? selectedModelId
+        let normalizedSelectedModelDisplayName = models.first(where: { $0.id == normalizedSelectedModelId })?.displayName
+            ?? normalizedSelectedModelId
         let selectedEffort = currentAI?.selectedReasoningEffort
         
         for model in models {
+            let isCurrentModel = model.id == normalizedSelectedModelId
+            let isDefaultModel = model.id == normalizedDefaultModelId
+            let displayTitle = isDefaultModel ? "\(model.displayName) (Default)" : model.displayName
+
             if model.hasReasoningEffort {
                 // 带子菜单的模型项
-                let item = NSMenuItem(title: model.displayName, action: nil, keyEquivalent: "")
+                let item = NSMenuItem(title: displayTitle, action: nil, keyEquivalent: "")
                 
                 // 如果是当前选中的模型，加粗
-                if model.id == selectedModelId {
+                if isCurrentModel {
                     let attrs: [NSAttributedString.Key: Any] = [
                         .font: NSFont.systemFont(ofSize: 13, weight: .semibold)
                     ]
-                    item.attributedTitle = NSAttributedString(string: model.displayName, attributes: attrs)
+                    item.attributedTitle = NSAttributedString(string: displayTitle, attributes: attrs)
                 }
                 
                 // 创建子菜单（推理深度）
                 let submenu = NSMenu(title: model.displayName)
-                let effortForComparison = model.id == selectedModelId ? selectedEffort : nil
+                let effortForComparison = isCurrentModel ? selectedEffort : nil
                 let defaultEffort = model.defaultEffort ?? .medium
                 
                 for effort in model.reasoningEfforts {
@@ -78,7 +96,7 @@ struct ModelSelectorView: View {
                     )
                     
                     // 当前选中标记
-                    let isCurrentEffort = model.id == selectedModelId
+                    let isCurrentEffort = isCurrentModel
                         && (effortForComparison ?? defaultEffort) == effort
                     if isCurrentEffort {
                         effortItem.state = .on
@@ -88,7 +106,7 @@ struct ModelSelectorView: View {
                     effortItem.representedObject = ModelEffortSelection(
                         modelId: model.id,
                         effort: effort,
-                        isDefault: model.isDefault,
+                        isDefault: isDefaultModel,
                         isDefaultEffort: effort == model.defaultEffort
                     )
                     
@@ -100,25 +118,39 @@ struct ModelSelectorView: View {
             } else {
                 // 无子菜单的模型项，直接选中
                 let item = NSMenuItem(
-                    title: model.displayName,
+                    title: displayTitle,
                     action: #selector(ModelMenuDelegate.selectModel(_:)),
                     keyEquivalent: ""
                 )
                 
-                if model.id == selectedModelId {
+                if isCurrentModel {
                     item.state = .on
                 }
                 
                 item.representedObject = ModelEffortSelection(
                     modelId: model.id,
                     effort: nil,
-                    isDefault: model.isDefault,
+                    isDefault: isDefaultModel,
                     isDefaultEffort: true
                 )
                 
                 menu.addItem(item)
             }
         }
+
+        menu.addItem(.separator())
+        let setDefaultTitle = "Set \"\(normalizedSelectedModelDisplayName)\" as Default"
+        let setDefaultItem = NSMenuItem(
+            title: setDefaultTitle,
+            action: #selector(ModelMenuDelegate.setCurrentModelAsDefault(_:)),
+            keyEquivalent: ""
+        )
+        setDefaultItem.isEnabled = normalizedSelectedModelId != normalizedDefaultModelId
+        setDefaultItem.representedObject = DefaultModelSelection(
+            modelId: normalizedSelectedModelId,
+            aiType: aiType
+        )
+        menu.addItem(setDefaultItem)
         
         // 设置 delegate 来处理 action
         let delegate = ModelMenuDelegate(appState: appState, aiId: aiId)
@@ -150,6 +182,11 @@ struct ModelEffortSelection {
     let isDefaultEffort: Bool
 }
 
+struct DefaultModelSelection {
+    let modelId: String
+    let aiType: AIType
+}
+
 // MARK: - Menu Delegate
 
 class ModelMenuDelegate: NSObject {
@@ -174,5 +211,12 @@ class ModelMenuDelegate: NSObject {
             selection.isDefaultEffort ? nil : selection.effort,
             for: aiId
         )
+    }
+
+    @objc func setCurrentModelAsDefault(_ sender: NSMenuItem) {
+        guard let selection = sender.representedObject as? DefaultModelSelection else { return }
+        appState.setDefaultModel(selection.modelId, for: selection.aiType)
+        appState.setSelectedModel(nil, for: aiId)
+        appState.setSelectedReasoningEffort(nil, for: aiId)
     }
 }

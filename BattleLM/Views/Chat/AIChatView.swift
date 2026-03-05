@@ -257,11 +257,13 @@ struct AIChatView: View {
                         )
                         .help("Attach file path")
                         
-                        // 模型选择器
-                        ModelSelectorView(
-                            aiType: currentAI.type,
-                            aiId: ai.id
-                        )
+                        // Qwen 固定使用默认模型，不显示模型选择器
+                        if currentAI.type != .qwen {
+                            ModelSelectorView(
+                                aiType: currentAI.type,
+                                aiId: ai.id
+                            )
+                        }
                         
                         Spacer()
                         
@@ -314,6 +316,10 @@ struct AIChatView: View {
         }
         .background(Color(.windowBackgroundColor))
         .onAppear {
+            // 兼容历史状态：若 Qwen 曾选过非默认模型，进入页面后回退到默认模型
+            if currentAI.type == .qwen, currentAI.selectedModel != nil {
+                appState.setSelectedModel(nil, for: ai.id)
+            }
             requestInputFocus()
         }
     }
@@ -372,7 +378,6 @@ struct AIChatView: View {
                 if !hasSession {
                     try await AIStreamEngineRouter.active.startSession(for: currentAI)
                     appState.setAIActive(true, for: currentAI.id)
-                    appState.setTerminalInteractive(true, for: currentAI.id)
                 }
 
                 // 某些 CLI（尤其 Claude）会在启动/执行工具前弹出需要用户选择的提示；
@@ -505,7 +510,6 @@ struct AIChatView: View {
                     // 启动会话
                     try await AIStreamEngineRouter.active.startSession(for: aiSnapshot)
                     appState.setAIActive(true, for: aiSnapshot.id)
-                    appState.setTerminalInteractive(true, for: aiSnapshot.id)
                     let systemMessage = Message.systemMessage("🟢 \(aiSnapshot.name) session started in \(aiSnapshot.shortPath)")
                     appState.appendMessage(systemMessage, to: aiSnapshot.id)
                 }

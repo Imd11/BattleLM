@@ -4,6 +4,8 @@ import Combine
 
 /// 全局应用状态
 class AppState: ObservableObject {
+    private static let defaultModelOverridesKey = "battlelm.defaultModelOverrides.v1"
+
     // MARK: - Published Properties
     
     /// AI 实例列表
@@ -23,20 +25,12 @@ class AppState: ObservableObject {
     
     /// 应用外观
     @Published var appAppearance: AppAppearance = .system
-    
-    /// 终端主题
-    @Published var terminalTheme: TerminalTheme = .default
 
-    /// 1:1 终端显示模式（Interactive vs Snapshot），按 AI 实例保存。
-    /// - 默认：Interactive（true）
-    /// - 备注：使用字典而非 @State，避免在切换不同 AI 时状态串用。
-    @Published var terminalIsInteractiveByAIId: [UUID: Bool] = [:]
-    
-    /// 终端位置
-    @Published var terminalPosition: TerminalPosition = .right
-    
     /// 字体大小
     @Published var fontSize: FontSizeOption = .medium
+
+    /// 每个 AI 类型的默认模型覆盖（仅保存“非内建默认”的选择）
+    @Published var defaultModelOverrides: [AIType: String] = [:]
     
     /// Sheet 控制
     @Published var showAddAISheet: Bool = false
@@ -77,16 +71,64 @@ class AppState: ObservableObject {
     // MARK: - Initialization
     
     init() {
+        defaultModelOverrides = Self.loadDefaultModelOverrides()
         // 启动 token 用量监控
         tokenUsageMonitor.startMonitoring()
     }
 
-    func isTerminalInteractive(for aiId: UUID) -> Bool {
-        terminalIsInteractiveByAIId[aiId] ?? true
+    // MARK: - Default Models
+
+    func defaultModelId(for type: AIType) -> String {
+        if let override = defaultModelOverrides[type],
+           type.availableModels.contains(where: { $0.id == override || $0.actualModelId == override }) {
+            return override
+        }
+        return type.defaultModelId
     }
 
-    func setTerminalInteractive(_ isInteractive: Bool, for aiId: UUID) {
-        terminalIsInteractiveByAIId[aiId] = isInteractive
+    /// 设置某个 AI 类型的默认模型，并立即应用到“仍跟随默认”的实例（selectedModel == nil）
+    func setDefaultModel(_ modelId: String, for type: AIType) {
+        guard let normalizedModelId = type.availableModels
+            .first(where: { $0.id == modelId || $0.actualModelId == modelId })?
+            .id else { return }
+
+        if normalizedModelId == type.defaultModelId {
+            defaultModelOverrides.removeValue(forKey: type)
+        } else {
+            defaultModelOverrides[type] = normalizedModelId
+        }
+        persistDefaultModelOverrides()
+
+        updateAIInstances { instances in
+            for index in instances.indices where instances[index].type == type && instances[index].selectedModel == nil {
+                instances[index].fallbackDefaultModelId = normalizedModelId
+                instances[index].selectedReasoningEffort = nil
+            }
+        }
+    }
+
+    private static func loadDefaultModelOverrides() -> [AIType: String] {
+        guard let raw = UserDefaults.standard.dictionary(forKey: defaultModelOverridesKey) as? [String: String] else {
+            return [:]
+        }
+
+        var result: [AIType: String] = [:]
+        for (typeRaw, modelId) in raw {
+            guard let type = AIType(rawValue: typeRaw),
+                  let normalizedModelId = type.availableModels
+                    .first(where: { $0.id == modelId || $0.actualModelId == modelId })?
+                    .id else { continue }
+
+            if normalizedModelId != type.defaultModelId {
+                result[type] = normalizedModelId
+            }
+        }
+        return result
+    }
+
+    private func persistDefaultModelOverrides() {
+        let raw = Dictionary(uniqueKeysWithValues: defaultModelOverrides.map { ($0.key.rawValue, $0.value) })
+        UserDefaults.standard.set(raw, forKey: Self.defaultModelOverridesKey)
     }
 
     /// 启动时预热：并行检测所有 AI CLI 状态，避免用户在 Add AI Sheet 中点击卡片时才卡顿等待。
@@ -134,7 +176,8 @@ class AppState: ObservableObject {
     /// 添加 AI 实例
     @discardableResult
     func addAI(type: AIType, name: String? = nil, workingDirectory: String) -> AIInstance? {
-        let ai = AIInstance(type: type, name: name, workingDirectory: workingDirectory)
+        var ai = AIInstance(type: type, name: name, workingDirectory: workingDirectory)
+        ai.fallbackDefaultModelId = defaultModelId(for: type)
         aiInstances.append(ai)
         
         // 自动选中新添加的 AI，关闭群聊选择
@@ -213,6 +256,9 @@ class AppState: ObservableObject {
     func setSelectedModel(_ modelId: String?, for aiId: UUID) {
         updateAIInstance(aiId) { ai in
             ai.selectedModel = modelId
+            if modelId == nil {
+                ai.fallbackDefaultModelId = self.defaultModelId(for: ai.type)
+            }
             ai.selectedReasoningEffort = nil  // 切换模型时重置推理深度
         }
     }

@@ -9,65 +9,70 @@ struct AIListView: View {
     @State private var showCreateGroupChat = false
     
     var body: some View {
-        List {
-            // Connection status
-            Section {
-                HStack {
-                    Circle()
-                        .fill(connectionStatusColor)
-                        .frame(width: 8, height: 8)
-                    Text(connectionStatusText)
-                        .foregroundColor(.secondary)
-                    Spacer()
-                    if case .error = connection.state {
-                        Button("Reconnect") {
-                            reconnect()
+        VStack(spacing: 0) {
+            BattleLMHeaderView()
+
+            List {
+                // Connection status
+                Section {
+                    HStack {
+                        Circle()
+                            .fill(connectionStatusColor)
+                            .frame(width: 8, height: 8)
+                        Text(connectionStatusText)
+                            .foregroundColor(.secondary)
+                        Spacer()
+                        if case .error = connection.state {
+                            Button("Reconnect") {
+                                reconnect()
+                            }
+                            .font(.caption)
+                            .foregroundColor(.blue)
+                        } else {
+                            Button("Disconnect") {
+                                connection.disconnect()
+                            }
+                            .font(.caption)
+                            .foregroundColor(.red)
                         }
-                        .font(.caption)
-                        .foregroundColor(.blue)
+                    }
+                }
+                
+                // AI list (moved above Group chats)
+                Section {
+                    if connection.aiList.isEmpty {
+                        Text("No AI instances")
+                            .foregroundColor(.secondary)
                     } else {
-                        Button("Disconnect") {
-                            connection.disconnect()
-                        }
-                        .font(.caption)
-                        .foregroundColor(.red)
-                    }
-                }
-            }
-            
-            // AI list (moved above Group chats)
-            Section {
-                if connection.aiList.isEmpty {
-                    Text("No AI instances")
-                        .foregroundColor(.secondary)
-                } else {
-                    ForEach(connection.aiList) { ai in
-                        NavigationLink(destination: RemoteChatView(ai: ai)) {
-                            AIRow(ai: ai)
+                        ForEach(connection.aiList) { ai in
+                            NavigationLink(destination: RemoteChatView(ai: ai)) {
+                                AIRow(ai: ai)
+                            }
                         }
                     }
+                } header: {
+                    Text("AI Instances")
                 }
-            } header: {
-                Text("AI Instances")
-            }
-            
-            // Group chats
-            Section {
-                if connection.groupChats.isEmpty {
-                    Text("No group chats")
-                        .foregroundColor(.secondary)
-                } else {
-                    ForEach(connection.groupChats) { chat in
-                        NavigationLink(destination: GroupChatView(chatId: chat.id)) {
-                            GroupChatRow(chat: chat)
+                
+                // Group chats
+                Section {
+                    if connection.groupChats.isEmpty {
+                        Text("No group chats")
+                            .foregroundColor(.secondary)
+                    } else {
+                        ForEach(connection.groupChats) { chat in
+                            NavigationLink(destination: GroupChatView(chatId: chat.id)) {
+                                GroupChatRow(chat: chat)
+                            }
                         }
                     }
+                } header: {
+                    Text("Group Chats")
                 }
-            } header: {
-                Text("Group Chats")
             }
         }
-        .navigationTitle("BattleLM")
+        .navigationTitle("")
+        .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .navigationBarTrailing) {
                 Button {

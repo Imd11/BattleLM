@@ -5,7 +5,10 @@ struct WelcomeView: View {
     @EnvironmentObject var connection: RemoteConnection
     
     var body: some View {
-        VStack(spacing: 32) {
+        VStack(spacing: 0) {
+            BattleLMHeaderView()
+
+            VStack(spacing: 32) {
             Spacer()
             
             // Icon
@@ -58,8 +61,10 @@ struct WelcomeView: View {
             }
             
             Spacer()
+            }
         }
-        .navigationTitle("BattleLM")
+        .navigationTitle("")
+        .navigationBarTitleDisplayMode(.inline)
     }
 }
 

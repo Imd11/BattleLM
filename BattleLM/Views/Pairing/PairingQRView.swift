@@ -1,5 +1,6 @@
 import SwiftUI
 import CoreImage.CIFilterBuiltins
+import AppKit
 
 /// Pairing QR Code View
 struct PairingQRView: View {
@@ -13,6 +14,7 @@ struct PairingQRView: View {
     @State private var countdown = 60
     @State private var countdownTimer: Timer?
     @State private var didAutoDismiss = false
+    @State private var didCopyPayload = false
     
     @Environment(\.dismiss) private var dismiss
     
@@ -154,6 +156,32 @@ struct PairingQRView: View {
             Text("Scan QR code with iPhone")
                 .font(.subheadline)
                 .foregroundColor(.secondary)
+
+            Text("If connection fails, refresh the QR code and scan again.")
+                .font(.caption)
+                .foregroundColor(.secondary.opacity(0.9))
+                .multilineTextAlignment(.center)
+
+            HStack(spacing: 10) {
+                Button(didCopyPayload ? "Copied" : "Copy Pairing String") {
+                    do {
+                        let str = try payload.toBase64()
+                        NSPasteboard.general.clearContents()
+                        NSPasteboard.general.setString(str, forType: .string)
+                        didCopyPayload = true
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) {
+                            didCopyPayload = false
+                        }
+                    } catch {
+                        // ignore
+                    }
+                }
+                .buttonStyle(.bordered)
+
+                Text("Use this for Windows/Linux pairing (paste in app).")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+            }
             
             // Countdown
             HStack(spacing: 4) {

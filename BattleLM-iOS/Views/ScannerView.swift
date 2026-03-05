@@ -107,11 +107,9 @@ struct ScannerView: View {
         dismiss()
         
         Task {
-            do {
-                try await connection.connectWithPairing(payload)
-            } catch {
-                connection.state = .error(error.localizedDescription)
-            }
+            // `RemoteConnection` already owns the full error presentation + fallback logic
+            // (wss → ws local). Avoid overriding it with a generic `cancelled` message.
+            _ = try? await connection.connectWithPairing(payload)
         }
     }
 }
@@ -150,6 +148,14 @@ class QRScannerViewController: UIViewController, AVCaptureMetadataOutputObjectsD
     override func viewDidLayoutSubviews() {
         super.viewDidLayoutSubviews()
         previewLayer?.frame = view.bounds
+    }
+
+    override func viewWillDisappear(_ animated: Bool) {
+        super.viewWillDisappear(animated)
+        stopScanning()
+        captureSession = nil
+        previewLayer?.removeFromSuperlayer()
+        previewLayer = nil
     }
     
     private func setupCamera() {

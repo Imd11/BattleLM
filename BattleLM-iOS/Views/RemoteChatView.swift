@@ -19,6 +19,12 @@ struct RemoteChatView: View {
                             MessageRow(message: message)
                                 .id(message.id)
                         }
+
+                        if connection.isAwaitingResponse(for: ai.id) {
+                            ThinkingRow(aiName: ai.name)
+                                .id("thinking-indicator")
+                                .transition(.opacity)
+                        }
                     }
                     .padding()
                 }
@@ -132,5 +138,34 @@ struct MessageRow: View {
         let formatter = DateFormatter()
         formatter.timeStyle = .short
         return formatter.string(from: date)
+    }
+}
+
+private struct ThinkingRow: View {
+    let aiName: String
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 12) {
+            VStack(alignment: .leading, spacing: 4) {
+                HStack(spacing: 6) {
+                    Image(systemName: "sparkle")
+                        .font(.caption)
+                        .foregroundColor(.purple)
+                    Text(aiName)
+                        .font(.caption)
+                        .fontWeight(.medium)
+                }
+
+                ThinkingDotsView()
+                    .padding(12)
+                    .background(Color(.secondarySystemGroupedBackground))
+                    .cornerRadius(16)
+
+                Color.clear
+                    .frame(height: 1)
+            }
+
+            Spacer(minLength: 60)
+        }
     }
 }

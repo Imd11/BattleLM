@@ -68,28 +68,6 @@ enum AccentColorOption: String, CaseIterable, Identifiable, Codable {
     }
 }
 
-/// 终端位置
-enum TerminalPosition: String, CaseIterable, Identifiable, Codable {
-    case right = "right"
-    case bottom = "bottom"
-    
-    var id: String { rawValue }
-    
-    var displayName: String {
-        switch self {
-        case .right: return "Right"
-        case .bottom: return "Bottom"
-        }
-    }
-    
-    var iconName: String {
-        switch self {
-        case .right: return "sidebar.right"
-        case .bottom: return "sidebar.squares.trailing"
-        }
-    }
-}
-
 /// 字体大小
 enum FontSizeOption: String, CaseIterable, Identifiable, Codable {
     case small = "small"
