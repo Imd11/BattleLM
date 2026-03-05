@@ -1,16 +1,21 @@
-# BattleLM - Cross-Platform AI Battle Platform
+# BattleLM (Flutter) - Cross-Platform Desktop UI
 
-BattleLM is a cross-platform application that enables AI battles and discussions with multiple AI assistants (Claude, Gemini, Codex, Qwen, Kimi).
+This folder contains the cross-platform **Flutter desktop UI** for BattleLM.  
+Goal: ship the **same UI/UX** on Windows/Linux/macOS.
 
 ## Supported Platforms
 
 | Platform | Status | Build Command |
 |----------|--------|---------------|
-| macOS | ✅ Ready | `flutter build macos` |
-| Windows | 🔄 CI/CD | GitHub Actions |
-| Linux | 🔄 CI/CD | GitHub Actions |
-| Android | 🔄 CI/CD | GitHub Actions |
-| iOS | ✅ Ready | `flutter build ios` |
+| macOS | ✅ UI | `flutter build macos` |
+| Windows | ✅ UI | `flutter build windows` |
+| Linux | ✅ UI | `flutter build linux` |
+| Android | ✅ UI | `flutter build apk` |
+| iOS | ✅ UI | `flutter build ios` |
+
+Notes:
+- Current implementation is a **standalone local demo** (no remote Mac dependency).
+- AI execution/bridges are a follow-up phase; UI is built to match the mac design first.
 
 ## Development Setup
 
@@ -34,6 +39,10 @@ cargo build
 ### Build Commands
 
 ```bash
+# Install deps
+cd flutter_app
+flutter pub get
+
 # macOS
 flutter build macos
 
@@ -60,14 +69,15 @@ The project includes GitHub Actions workflows for automated builds:
 
 See `.github/workflows/build.yml` for details.
 
-## Architecture
+## UI Architecture (current)
 
 ```
 BattleLM/
 ├── flutter_app/              # Flutter UI (cross-platform)
 │   ├── lib/                 # Dart code
-│   │   ├── core/           # Models & Services
-│   │   └── features/       # UI features
+│   │   ├── app/            # App state + app shell
+│   │   ├── core/           # Models & Storage
+│   │   └── features/       # Sidebar + Chat UI
 │   ├── src/                # Rust core
 │   │   ├── process_manager/
 │   │   ├── websocket/
@@ -81,13 +91,10 @@ BattleLM/
 
 ## Features
 
-- Multi-AI conversations and debates
-- Group chat with multiple AI participants
-- Terminal emulation for AI working directories
-- Token usage monitoring
-- Remote device connections via WebSocket
-- QR code pairing
-- Cloudflare tunnel support
+- Sidebar: AI instances + group chats
+- 1:1 AI chat and group chat UI
+- Typing indicator and streaming message simulation
+- Local storage for instances/chats
 
 ## License
 

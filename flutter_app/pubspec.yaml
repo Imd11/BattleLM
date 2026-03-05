@@ -18,6 +18,8 @@ dependencies:
 
   # WebSocket & Network
   web_socket_channel: ^3.0.1
+  crypto: ^3.0.3
+  cryptography: ^2.7.0
 
   # Terminal Emulation
   xterm: ^4.0.0
@@ -47,4 +49,11 @@ flutter:
 
   assets:
     - assets/
+    - assets/images/
     - assets/fonts/
+    - assets/bridge/
+
+  fonts:
+    - family: Orbitron
+      fonts:
+        - asset: assets/fonts/Orbitron-VariableFont.ttf

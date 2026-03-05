@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
-import 'package:provider/provider.dart';
-import 'core/services/services.dart';
-import 'features/home/home_view.dart';
+import 'core/services/storage_service.dart';
+import 'app/battlelm_app.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -11,26 +10,4 @@ void main() async {
   await storage.init();
 
   runApp(BattleLMApp(storage: storage));
-}
-
-class BattleLMApp extends StatelessWidget {
-  final StorageService storage;
-
-  const BattleLMApp({super.key, required this.storage});
-
-  @override
-  Widget build(BuildContext context) {
-    return Provider<StorageService>.value(
-      value: storage,
-      child: MaterialApp(
-        title: 'BattleLM',
-        debugShowCheckedModeBanner: false,
-        theme: ThemeData(
-          colorScheme: ColorScheme.fromSeed(seedColor: Colors.deepPurple),
-          useMaterial3: true,
-        ),
-        home: const HomeView(),
-      ),
-    );
-  }
 }
