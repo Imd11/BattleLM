@@ -145,25 +145,32 @@ jobs:
     runs-on: ubuntu-latest
     if: startsWith(github.ref, 'refs/tags/v')
     steps:
-      - name: Download all artifacts
+      - name: Download macOS artifact
         uses: actions/download-artifact@v4
         with:
-          path: artifacts
-          pattern: battle-lm-*
-          merge-multiple: false
+          name: battle-lm-macos
 
-      - name: List downloaded files
-        run: ls -la artifacts/
+      - name: Download Windows artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: battle-lm-windows
+          path: windows
+
+      - name: Download Linux artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: battle-lm-linux
+          path: linux
+
+      - name: Download Android artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: battle-lm-android
+          path: android
 
       - name: Create Release
         uses: softprops/action-gh-release@v1
         with:
-          files: |
-            artifacts/battle-lm-macos/*
-            artifacts/battle-lm-windows/*
-            artifacts/battle-lm-linux/*
-            artifacts/battle-lm-android/*
-            artifacts/battle-lm-ios/*
           draft: false
           prerelease: false
         env:
