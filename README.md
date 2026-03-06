@@ -31,6 +31,10 @@ It currently focuses on:
 
 ![BattleLM iPhone companion](docs/images/readme/ios.png)
 
+### Usage Stats
+
+![BattleLM usage stats](docs/images/readme/usage.png)
+
 ## Requirements
 
 - macOS
