@@ -63,8 +63,7 @@ struct WelcomeView: View {
             Spacer()
             }
         }
-        .navigationTitle("")
-        .navigationBarTitleDisplayMode(.inline)
+        .toolbar(.hidden, for: .navigationBar)
     }
 }
 

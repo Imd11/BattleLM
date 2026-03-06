@@ -261,9 +261,9 @@ struct AIChatView: View {
                 }
                 .padding(.horizontal, sideInset)
                 .padding(.top, 6)
-                .padding(.bottom, 16)
             }
             .frame(height: 96)  // 两行布局需要更高
+            .padding(.bottom, 32)
             // 背景色统一由外层 VStack 控制
         }
         .background(Color(.windowBackgroundColor))

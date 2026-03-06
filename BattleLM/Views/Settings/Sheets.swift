@@ -810,7 +810,7 @@ struct SettingsSheet: View {
     @State private var isCloseHovered = false
     @State private var hasInitializedDefaultModelDraft = false
     @State private var defaultModelDraft: [AIType: String] = [:]
-    @State private var customModelDraft: [AIType: String] = [:]
+    @State private var defaultEffortDraft: [AIType: ReasoningEffort] = [:]
     
     var body: some View {
         HStack(spacing: 0) {
@@ -927,7 +927,10 @@ struct SettingsSheet: View {
                             "",
                             selection: Binding(
                                 get: { defaultModelDraft[type] ?? appState.defaultModelId(for: type) },
-                                set: { defaultModelDraft[type] = $0 }
+                                set: {
+                                    defaultModelDraft[type] = $0
+                                    resetDefaultEffortIfNeeded(for: type)
+                                }
                             )
                         ) {
                             ForEach(defaultModelOptions(for: type), id: \.id) { model in
@@ -941,43 +944,38 @@ struct SettingsSheet: View {
 
                         Button("Reset") {
                             defaultModelDraft[type] = type.defaultModelId
-                            if type.supportsCustomModelId {
-                                customModelDraft[type] = ""
-                            }
+                            defaultEffortDraft.removeValue(forKey: type)
                         }
                         .buttonStyle(.borderless)
                         .disabled((defaultModelDraft[type] ?? appState.defaultModelId(for: type)) == type.defaultModelId)
                     }
 
-                    if type.supportsCustomModelId {
+                    if let model = selectedDefaultModelOption(for: type), model.hasReasoningEffort {
                         HStack(spacing: 10) {
-                            Text("Custom ID")
+                            Text("Reasoning")
                                 .font(.caption)
                                 .foregroundColor(.secondary)
                                 .frame(width: 74, alignment: .leading)
 
-                            TextField(
-                                "e.g. gpt-5.4",
-                                text: Binding(
-                                    get: { customModelDraft[type] ?? currentCustomModelValue(for: type) },
-                                    set: { customModelDraft[type] = $0 }
+                            Picker(
+                                "",
+                                selection: Binding(
+                                    get: { currentDraftEffort(for: type, model: model) },
+                                    set: { defaultEffortDraft[type] = $0 }
                                 )
-                            )
-                            .textFieldStyle(.roundedBorder)
-                            .frame(maxWidth: 320)
-
-                            Button("Use Custom") {
-                                let trimmed = (customModelDraft[type] ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
-                                guard !trimmed.isEmpty else { return }
-                                defaultModelDraft[type] = trimmed
+                            ) {
+                                Text("Model Default").tag(model.defaultEffort ?? .medium)
+                                ForEach(model.reasoningEfforts, id: \.self) { effort in
+                                    Text(effort.displayName).tag(effort)
+                                }
                             }
-                            .buttonStyle(.borderless)
-                            .disabled((customModelDraft[type] ?? "").trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                            .labelsHidden()
+                            .frame(maxWidth: 240, alignment: .leading)
 
                             Spacer()
                         }
 
-                        Text("Codex model IDs are passed through exactly as entered. If your local Codex/OpenAI setup does not support the ID, the request will fail.")
+                        Text("Applies to chats that use the default model for \(type.displayName).")
                             .font(.caption2)
                             .foregroundColor(.secondary)
                             .padding(.leading, 100)
@@ -1021,10 +1019,10 @@ struct SettingsSheet: View {
                 (type, appState.defaultModelId(for: type))
             }
         )
-        customModelDraft = Dictionary(
+        defaultEffortDraft = Dictionary(
             uniqueKeysWithValues: configurableDefaultAITypes.compactMap { type in
-                guard type.supportsCustomModelId else { return nil }
-                return (type, currentCustomModelValue(for: type))
+                guard let effort = appState.defaultReasoningEffortOverride(for: type) else { return nil }
+                return (type, effort)
             }
         )
     }
@@ -1032,47 +1030,67 @@ struct SettingsSheet: View {
     private var hasUnsavedDefaultModelChanges: Bool {
         configurableDefaultAITypes.contains { type in
             (defaultModelDraft[type] ?? appState.defaultModelId(for: type)) != appState.defaultModelId(for: type)
+            || defaultEffortDraft[type] != appState.defaultReasoningEffortOverride(for: type)
         }
     }
 
     private func saveDefaultModelDraft() {
         for type in configurableDefaultAITypes {
             let targetModelId = defaultModelDraft[type] ?? type.defaultModelId
-            appState.setDefaultModel(targetModelId, for: type)
+            appState.setDefaultModel(targetModelId, effort: normalizedDraftEffort(for: type), for: type)
         }
         defaultModelDraft = Dictionary(
             uniqueKeysWithValues: configurableDefaultAITypes.map { type in
                 (type, appState.defaultModelId(for: type))
             }
         )
-        customModelDraft = Dictionary(
+        defaultEffortDraft = Dictionary(
             uniqueKeysWithValues: configurableDefaultAITypes.compactMap { type in
-                guard type.supportsCustomModelId else { return nil }
-                return (type, currentCustomModelValue(for: type))
+                guard let effort = appState.defaultReasoningEffortOverride(for: type) else { return nil }
+                return (type, effort)
             }
         )
     }
 
-    private func currentCustomModelValue(for type: AIType) -> String {
-        let selectedModelId = defaultModelDraft[type] ?? appState.defaultModelId(for: type)
-        return type.isKnownModelId(selectedModelId) ? "" : selectedModelId
-    }
-
     private func defaultModelOptions(for type: AIType) -> [ModelOption] {
-        let currentModelId = defaultModelDraft[type] ?? appState.defaultModelId(for: type)
-        guard !type.isKnownModelId(currentModelId) else { return type.availableModels }
-
-        return [
-            ModelOption(
-                id: currentModelId,
-                displayName: currentModelId,
-                subtitle: "Custom model ID"
-            )
-        ] + type.availableModels
+        type.availableModels
     }
 
     private func displayName(for model: ModelOption, type: AIType) -> String {
-        type.isKnownModelId(model.id) ? model.displayName : "\(model.displayName) (Custom)"
+        model.displayName
+    }
+
+    private func selectedDefaultModelOption(for type: AIType) -> ModelOption? {
+        let modelId = defaultModelDraft[type] ?? appState.defaultModelId(for: type)
+        return type.availableModels.first(where: { $0.id == modelId || $0.actualModelId == modelId })
+    }
+
+    private func normalizedDraftEffort(for type: AIType) -> ReasoningEffort? {
+        guard let model = selectedDefaultModelOption(for: type), model.hasReasoningEffort else {
+            return nil
+        }
+        guard let effort = defaultEffortDraft[type], model.reasoningEfforts.contains(effort) else {
+            return nil
+        }
+        return effort == model.defaultEffort ? nil : effort
+    }
+
+    private func currentDraftEffort(for type: AIType, model: ModelOption) -> ReasoningEffort {
+        if let effort = defaultEffortDraft[type], model.reasoningEfforts.contains(effort) {
+            return effort
+        }
+        return model.defaultEffort ?? .medium
+    }
+
+    private func resetDefaultEffortIfNeeded(for type: AIType) {
+        guard let model = selectedDefaultModelOption(for: type), model.hasReasoningEffort else {
+            defaultEffortDraft.removeValue(forKey: type)
+            return
+        }
+        guard let effort = defaultEffortDraft[type], model.reasoningEfforts.contains(effort) else {
+            defaultEffortDraft.removeValue(forKey: type)
+            return
+        }
     }
 }
 

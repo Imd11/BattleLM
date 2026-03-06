@@ -148,6 +148,7 @@ struct ModelSelectorView: View {
         setDefaultItem.isEnabled = normalizedSelectedModelId != normalizedDefaultModelId
         setDefaultItem.representedObject = DefaultModelSelection(
             modelId: normalizedSelectedModelId,
+            effort: currentAI?.effectiveEffort,
             aiType: aiType
         )
         menu.addItem(setDefaultItem)
@@ -184,6 +185,7 @@ struct ModelEffortSelection {
 
 struct DefaultModelSelection {
     let modelId: String
+    let effort: ReasoningEffort?
     let aiType: AIType
 }
 
@@ -215,7 +217,7 @@ class ModelMenuDelegate: NSObject {
 
     @objc func setCurrentModelAsDefault(_ sender: NSMenuItem) {
         guard let selection = sender.representedObject as? DefaultModelSelection else { return }
-        appState.setDefaultModel(selection.modelId, for: selection.aiType)
+        appState.setDefaultModel(selection.modelId, effort: selection.effort, for: selection.aiType)
         appState.setSelectedModel(nil, for: aiId)
         appState.setSelectedReasoningEffort(nil, for: aiId)
     }

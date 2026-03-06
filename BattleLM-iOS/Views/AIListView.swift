@@ -10,7 +10,9 @@ struct AIListView: View {
     
     var body: some View {
         VStack(spacing: 0) {
-            BattleLMHeaderView()
+            BattleLMHeaderView {
+                showCreateGroupChat = true
+            }
 
             List {
                 // Connection status
@@ -71,18 +73,7 @@ struct AIListView: View {
                 }
             }
         }
-        .navigationTitle("")
-        .navigationBarTitleDisplayMode(.inline)
-        .toolbar {
-            ToolbarItem(placement: .navigationBarTrailing) {
-                Button {
-                    showCreateGroupChat = true
-                } label: {
-                    Image(systemName: "plus")
-                }
-                .accessibilityLabel("Create Group Chat")
-            }
-        }
+        .toolbar(.hidden, for: .navigationBar)
         .sheet(isPresented: $showCreateGroupChat) {
             CreateGroupChatView()
         }

@@ -15,6 +15,7 @@ struct AIInstance: Identifiable, Codable, Equatable, Hashable {
     var selectedModel: String?     // 用户选择的模型（nil = 使用默认）
     var selectedReasoningEffort: ReasoningEffort?  // 用户选择的推理深度（nil = 使用模型默认）
     var fallbackDefaultModelId: String?  // 实例默认模型来源（nil = 使用 AIType 内建默认）
+    var fallbackDefaultReasoningEffort: ReasoningEffort?  // 实例默认推理深度来源（nil = 使用模型内建默认）
     
     // 手动实现 Hashable，只基于 id
     func hash(into hasher: inout Hasher) {
@@ -38,6 +39,7 @@ struct AIInstance: Identifiable, Codable, Equatable, Hashable {
         self.selectedModel = nil
         self.selectedReasoningEffort = nil
         self.fallbackDefaultModelId = nil
+        self.fallbackDefaultReasoningEffort = nil
     }
 
     /// 当前实例默认模型 ID（兼容旧数据：缺失时回退到 AIType 默认）
@@ -47,6 +49,10 @@ struct AIInstance: Identifiable, Codable, Equatable, Hashable {
             return normalizedModelId
         }
         return type.defaultModelId
+    }
+
+    private var resolvedDefaultModelOption: ModelOption? {
+        modelOption(for: resolvedDefaultModelId)
     }
 
     private func modelOption(for modelId: String) -> ModelOption? {
@@ -65,6 +71,19 @@ struct AIInstance: Identifiable, Codable, Equatable, Hashable {
     private var selectedModelOption: ModelOption? {
         modelOption(for: resolvedSelectedModelId)
     }
+
+    private var usingDefaultModel: Bool {
+        selectedModel == nil
+    }
+
+    private var resolvedDefaultEffort: ReasoningEffort? {
+        guard let model = resolvedDefaultModelOption, model.hasReasoningEffort else { return nil }
+        if let fallbackDefaultReasoningEffort,
+           model.reasoningEfforts.contains(fallbackDefaultReasoningEffort) {
+            return fallbackDefaultReasoningEffort
+        }
+        return model.defaultEffort
+    }
     
     /// 当前生效的模型 ID（传给 API 的真实 ID）
     var effectiveModel: String {
@@ -79,7 +98,11 @@ struct AIInstance: Identifiable, Codable, Equatable, Hashable {
     /// 当前生效的推理深度
     var effectiveEffort: ReasoningEffort? {
         guard let model = selectedModelOption, model.hasReasoningEffort else { return nil }
-        return selectedReasoningEffort ?? model.defaultEffort
+        if let selectedReasoningEffort,
+           model.reasoningEfforts.contains(selectedReasoningEffort) {
+            return selectedReasoningEffort
+        }
+        return usingDefaultModel ? resolvedDefaultEffort : model.defaultEffort
     }
     
     /// 当前模型的显示名称（含推理深度）

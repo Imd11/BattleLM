@@ -190,25 +190,13 @@ enum AIType: String, Codable, CaseIterable, Identifiable {
         }
     }
 
-    var supportsCustomModelId: Bool {
-        self == .codex
-    }
-
-    func isKnownModelId(_ modelId: String) -> Bool {
-        availableModels.contains(where: { $0.id == modelId || $0.actualModelId == modelId })
-    }
-
     func normalizeModelId(_ modelId: String) -> String? {
         let trimmed = modelId.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return nil }
 
-        if let normalized = availableModels
+        return availableModels
             .first(where: { $0.id == trimmed || $0.actualModelId == trimmed })?
-            .id {
-            return normalized
-        }
-
-        return supportsCustomModelId ? trimmed : nil
+            .id
     }
 
     /// 默认模型 ID

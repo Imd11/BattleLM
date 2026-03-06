@@ -5,6 +5,7 @@ import Combine
 /// 全局应用状态
 class AppState: ObservableObject {
     private static let defaultModelOverridesKey = "battlelm.defaultModelOverrides.v1"
+    private static let defaultReasoningEffortOverridesKey = "battlelm.defaultReasoningEffortOverrides.v1"
 
     // MARK: - Published Properties
     
@@ -31,6 +32,9 @@ class AppState: ObservableObject {
 
     /// 每个 AI 类型的默认模型覆盖（仅保存“非内建默认”的选择）
     @Published var defaultModelOverrides: [AIType: String] = [:]
+
+    /// 每个 AI 类型的默认推理深度覆盖（仅保存“非模型内建默认”的选择）
+    @Published var defaultReasoningEffortOverrides: [AIType: ReasoningEffort] = [:]
     
     /// Sheet 控制
     @Published var showAddAISheet: Bool = false
@@ -72,6 +76,7 @@ class AppState: ObservableObject {
     
     init() {
         defaultModelOverrides = Self.loadDefaultModelOverrides()
+        defaultReasoningEffortOverrides = Self.loadDefaultReasoningEffortOverrides(modelOverrides: defaultModelOverrides)
         // 启动 token 用量监控
         tokenUsageMonitor.startMonitoring()
     }
@@ -86,20 +91,55 @@ class AppState: ObservableObject {
         return type.defaultModelId
     }
 
+    func defaultReasoningEffortOverride(for type: AIType) -> ReasoningEffort? {
+        guard let model = defaultModelOption(for: type),
+              model.hasReasoningEffort,
+              let effort = defaultReasoningEffortOverrides[type],
+              model.reasoningEfforts.contains(effort) else {
+            return nil
+        }
+        return effort
+    }
+
+    func defaultReasoningEffort(for type: AIType) -> ReasoningEffort? {
+        guard let model = defaultModelOption(for: type), model.hasReasoningEffort else { return nil }
+        return defaultReasoningEffortOverride(for: type) ?? model.defaultEffort
+    }
+
     /// 设置某个 AI 类型的默认模型，并立即应用到“仍跟随默认”的实例（selectedModel == nil）
-    func setDefaultModel(_ modelId: String, for type: AIType) {
+    func setDefaultModel(_ modelId: String, effort: ReasoningEffort? = nil, for type: AIType) {
         guard let normalizedModelId = type.normalizeModelId(modelId) else { return }
+        let model = type.availableModels.first(where: { $0.id == normalizedModelId || $0.actualModelId == normalizedModelId })
+        let normalizedEffort: ReasoningEffort?
+        if let model,
+           model.hasReasoningEffort,
+           let effort,
+           model.reasoningEfforts.contains(effort) {
+            normalizedEffort = effort
+        } else {
+            normalizedEffort = nil
+        }
 
         if normalizedModelId == type.defaultModelId {
             defaultModelOverrides.removeValue(forKey: type)
         } else {
             defaultModelOverrides[type] = normalizedModelId
         }
+        if let model,
+           model.hasReasoningEffort,
+           let normalizedEffort,
+           normalizedEffort != model.defaultEffort {
+            defaultReasoningEffortOverrides[type] = normalizedEffort
+        } else {
+            defaultReasoningEffortOverrides.removeValue(forKey: type)
+        }
         persistDefaultModelOverrides()
+        persistDefaultReasoningEffortOverrides()
 
         updateAIInstances { instances in
             for index in instances.indices where instances[index].type == type && instances[index].selectedModel == nil {
                 instances[index].fallbackDefaultModelId = normalizedModelId
+                instances[index].fallbackDefaultReasoningEffort = self.defaultReasoningEffort(for: type)
                 instances[index].selectedReasoningEffort = nil
             }
         }
@@ -122,9 +162,42 @@ class AppState: ObservableObject {
         return result
     }
 
+    private static func loadDefaultReasoningEffortOverrides(modelOverrides: [AIType: String]) -> [AIType: ReasoningEffort] {
+        guard let raw = UserDefaults.standard.dictionary(forKey: defaultReasoningEffortOverridesKey) as? [String: String] else {
+            return [:]
+        }
+
+        var result: [AIType: ReasoningEffort] = [:]
+        for (typeRaw, effortRaw) in raw {
+            guard let type = AIType(rawValue: typeRaw),
+                  let effort = ReasoningEffort(rawValue: effortRaw) else { continue }
+
+            let modelId = modelOverrides[type].flatMap(type.normalizeModelId) ?? type.defaultModelId
+            guard let model = type.availableModels.first(where: { $0.id == modelId || $0.actualModelId == modelId }),
+                  model.hasReasoningEffort,
+                  model.reasoningEfforts.contains(effort),
+                  effort != model.defaultEffort else {
+                continue
+            }
+
+            result[type] = effort
+        }
+        return result
+    }
+
     private func persistDefaultModelOverrides() {
         let raw = Dictionary(uniqueKeysWithValues: defaultModelOverrides.map { ($0.key.rawValue, $0.value) })
         UserDefaults.standard.set(raw, forKey: Self.defaultModelOverridesKey)
+    }
+
+    private func persistDefaultReasoningEffortOverrides() {
+        let raw = Dictionary(uniqueKeysWithValues: defaultReasoningEffortOverrides.map { ($0.key.rawValue, $0.value.rawValue) })
+        UserDefaults.standard.set(raw, forKey: Self.defaultReasoningEffortOverridesKey)
+    }
+
+    private func defaultModelOption(for type: AIType) -> ModelOption? {
+        let modelId = defaultModelId(for: type)
+        return type.availableModels.first(where: { $0.id == modelId || $0.actualModelId == modelId })
     }
 
     /// 启动时预热：并行检测所有 AI CLI 状态，避免用户在 Add AI Sheet 中点击卡片时才卡顿等待。
@@ -174,6 +247,7 @@ class AppState: ObservableObject {
     func addAI(type: AIType, name: String? = nil, workingDirectory: String) -> AIInstance? {
         var ai = AIInstance(type: type, name: name, workingDirectory: workingDirectory)
         ai.fallbackDefaultModelId = defaultModelId(for: type)
+        ai.fallbackDefaultReasoningEffort = defaultReasoningEffort(for: type)
         aiInstances.append(ai)
         
         // 自动选中新添加的 AI，关闭群聊选择
@@ -255,6 +329,7 @@ class AppState: ObservableObject {
             ai.selectedModel = normalizedModelId
             if normalizedModelId == nil {
                 ai.fallbackDefaultModelId = self.defaultModelId(for: ai.type)
+                ai.fallbackDefaultReasoningEffort = self.defaultReasoningEffort(for: ai.type)
             }
             ai.selectedReasoningEffort = nil  // 切换模型时重置推理深度
         }

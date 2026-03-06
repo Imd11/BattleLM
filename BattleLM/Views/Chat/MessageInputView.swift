@@ -218,10 +218,10 @@ struct MessageInputView: View {
                 )
                 .padding(.horizontal, sideInset)
                 .padding(.top, 6)
-                .padding(.bottom, 12)
             }
         }
         .frame(height: 110)
+        .padding(.bottom, 32)
     }
     
     // MARK: - Extracted Sub-views
