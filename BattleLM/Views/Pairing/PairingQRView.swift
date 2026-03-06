@@ -14,7 +14,6 @@ struct PairingQRView: View {
     @State private var countdown = 60
     @State private var countdownTimer: Timer?
     @State private var didAutoDismiss = false
-    @State private var didCopyPayload = false
     
     @Environment(\.dismiss) private var dismiss
     
@@ -151,6 +150,12 @@ struct PairingQRView: View {
                     .frame(width: 200, height: 200)
                     .background(Color.white)
                     .cornerRadius(12)
+
+                Button("Refresh QR Code") {
+                    Task { await regenerateQR() }
+                }
+                .buttonStyle(.borderedProminent)
+                .disabled(isLoading)
             }
             
             Text("Scan QR code with iPhone")
@@ -162,41 +167,12 @@ struct PairingQRView: View {
                 .foregroundColor(.secondary.opacity(0.9))
                 .multilineTextAlignment(.center)
 
-            HStack(spacing: 10) {
-                Button(didCopyPayload ? "Copied" : "Copy Pairing String") {
-                    do {
-                        let str = try payload.toBase64()
-                        NSPasteboard.general.clearContents()
-                        NSPasteboard.general.setString(str, forType: .string)
-                        didCopyPayload = true
-                        DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) {
-                            didCopyPayload = false
-                        }
-                    } catch {
-                        // ignore
-                    }
-                }
-                .buttonStyle(.bordered)
-
-                Text("Use this for Windows/Linux pairing (paste in app).")
-                    .font(.caption)
-                    .foregroundColor(.secondary)
-            }
-            
             // Countdown
             HStack(spacing: 4) {
                 Image(systemName: "clock")
                 Text("Expires in \(countdown)s")
             }
             .foregroundColor(countdown <= 10 ? .orange : .secondary)
-            
-            // Refresh button
-            if countdown <= 0 {
-                Button("Refresh QR Code") {
-                    Task { await regenerateQR() }
-                }
-                .buttonStyle(.borderedProminent)
-            }
         }
     }
 
