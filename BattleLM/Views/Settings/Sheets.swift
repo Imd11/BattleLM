@@ -810,6 +810,7 @@ struct SettingsSheet: View {
     @State private var isCloseHovered = false
     @State private var hasInitializedDefaultModelDraft = false
     @State private var defaultModelDraft: [AIType: String] = [:]
+    @State private var customModelDraft: [AIType: String] = [:]
     
     var body: some View {
         HStack(spacing: 0) {
@@ -914,34 +915,73 @@ struct SettingsSheet: View {
                 .foregroundColor(.secondary)
 
             ForEach(configurableDefaultAITypes) { type in
-                HStack(spacing: 10) {
-                    AILogoView(aiType: type, size: 16)
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack(spacing: 10) {
+                        AILogoView(aiType: type, size: 16)
 
-                    Text(type.displayName)
-                        .font(.system(size: 13, weight: .medium))
-                        .frame(width: 74, alignment: .leading)
+                        Text(type.displayName)
+                            .font(.system(size: 13, weight: .medium))
+                            .frame(width: 74, alignment: .leading)
 
-                    Picker(
-                        "",
-                        selection: Binding(
-                            get: { defaultModelDraft[type] ?? appState.defaultModelId(for: type) },
-                            set: { defaultModelDraft[type] = $0 }
-                        )
-                    ) {
-                        ForEach(type.availableModels, id: \.id) { model in
-                            Text(model.displayName).tag(model.id)
+                        Picker(
+                            "",
+                            selection: Binding(
+                                get: { defaultModelDraft[type] ?? appState.defaultModelId(for: type) },
+                                set: { defaultModelDraft[type] = $0 }
+                            )
+                        ) {
+                            ForEach(defaultModelOptions(for: type), id: \.id) { model in
+                                Text(displayName(for: model, type: type)).tag(model.id)
+                            }
                         }
-                    }
-                    .labelsHidden()
-                    .frame(maxWidth: 320, alignment: .leading)
+                        .labelsHidden()
+                        .frame(maxWidth: 320, alignment: .leading)
 
-                    Spacer()
+                        Spacer()
 
-                    Button("Reset") {
-                        defaultModelDraft[type] = type.defaultModelId
+                        Button("Reset") {
+                            defaultModelDraft[type] = type.defaultModelId
+                            if type.supportsCustomModelId {
+                                customModelDraft[type] = ""
+                            }
+                        }
+                        .buttonStyle(.borderless)
+                        .disabled((defaultModelDraft[type] ?? appState.defaultModelId(for: type)) == type.defaultModelId)
                     }
-                    .buttonStyle(.borderless)
-                    .disabled((defaultModelDraft[type] ?? appState.defaultModelId(for: type)) == type.defaultModelId)
+
+                    if type.supportsCustomModelId {
+                        HStack(spacing: 10) {
+                            Text("Custom ID")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                                .frame(width: 74, alignment: .leading)
+
+                            TextField(
+                                "e.g. gpt-5.4",
+                                text: Binding(
+                                    get: { customModelDraft[type] ?? currentCustomModelValue(for: type) },
+                                    set: { customModelDraft[type] = $0 }
+                                )
+                            )
+                            .textFieldStyle(.roundedBorder)
+                            .frame(maxWidth: 320)
+
+                            Button("Use Custom") {
+                                let trimmed = (customModelDraft[type] ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+                                guard !trimmed.isEmpty else { return }
+                                defaultModelDraft[type] = trimmed
+                            }
+                            .buttonStyle(.borderless)
+                            .disabled((customModelDraft[type] ?? "").trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+
+                            Spacer()
+                        }
+
+                        Text("Codex model IDs are passed through exactly as entered. If your local Codex/OpenAI setup does not support the ID, the request will fail.")
+                            .font(.caption2)
+                            .foregroundColor(.secondary)
+                            .padding(.leading, 100)
+                    }
                 }
             }
 
@@ -981,6 +1021,12 @@ struct SettingsSheet: View {
                 (type, appState.defaultModelId(for: type))
             }
         )
+        customModelDraft = Dictionary(
+            uniqueKeysWithValues: configurableDefaultAITypes.compactMap { type in
+                guard type.supportsCustomModelId else { return nil }
+                return (type, currentCustomModelValue(for: type))
+            }
+        )
     }
 
     private var hasUnsavedDefaultModelChanges: Bool {
@@ -999,6 +1045,34 @@ struct SettingsSheet: View {
                 (type, appState.defaultModelId(for: type))
             }
         )
+        customModelDraft = Dictionary(
+            uniqueKeysWithValues: configurableDefaultAITypes.compactMap { type in
+                guard type.supportsCustomModelId else { return nil }
+                return (type, currentCustomModelValue(for: type))
+            }
+        )
+    }
+
+    private func currentCustomModelValue(for type: AIType) -> String {
+        let selectedModelId = defaultModelDraft[type] ?? appState.defaultModelId(for: type)
+        return type.isKnownModelId(selectedModelId) ? "" : selectedModelId
+    }
+
+    private func defaultModelOptions(for type: AIType) -> [ModelOption] {
+        let currentModelId = defaultModelDraft[type] ?? appState.defaultModelId(for: type)
+        guard !type.isKnownModelId(currentModelId) else { return type.availableModels }
+
+        return [
+            ModelOption(
+                id: currentModelId,
+                displayName: currentModelId,
+                subtitle: "Custom model ID"
+            )
+        ] + type.availableModels
+    }
+
+    private func displayName(for model: ModelOption, type: AIType) -> String {
+        type.isKnownModelId(model.id) ? model.displayName : "\(model.displayName) (Custom)"
     }
 }
 

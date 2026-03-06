@@ -45,8 +45,8 @@ struct AIInstance: Identifiable, Codable, Equatable, Hashable {
     /// 当前实例默认模型 ID（兼容旧数据：缺失时回退到 AIType 默认）
     var resolvedDefaultModelId: String {
         if let fallbackDefaultModelId,
-           type.availableModels.contains(where: { $0.id == fallbackDefaultModelId || $0.actualModelId == fallbackDefaultModelId }) {
-            return fallbackDefaultModelId
+           let normalizedModelId = type.normalizeModelId(fallbackDefaultModelId) {
+            return normalizedModelId
         }
         return type.defaultModelId
     }
@@ -54,16 +54,23 @@ struct AIInstance: Identifiable, Codable, Equatable, Hashable {
     private func modelOption(for modelId: String) -> ModelOption? {
         type.availableModels.first(where: { $0.id == modelId || $0.actualModelId == modelId })
     }
+
+    private var resolvedSelectedModelId: String {
+        if let selectedModel,
+           let normalizedModelId = type.normalizeModelId(selectedModel) {
+            return normalizedModelId
+        }
+        return resolvedDefaultModelId
+    }
     
     /// 当前选中的 ModelOption
     private var selectedModelOption: ModelOption? {
-        let modelId = selectedModel ?? resolvedDefaultModelId
-        return modelOption(for: modelId)
+        modelOption(for: resolvedSelectedModelId)
     }
     
     /// 当前生效的模型 ID（传给 API 的真实 ID）
     var effectiveModel: String {
-        selectedModelOption?.actualModelId ?? resolvedDefaultModelId
+        selectedModelOption?.actualModelId ?? resolvedSelectedModelId
     }
     
     /// 是否开启 thinking 模式
@@ -79,7 +86,7 @@ struct AIInstance: Identifiable, Codable, Equatable, Hashable {
     
     /// 当前模型的显示名称（含推理深度）
     var modelDisplayName: String {
-        let name = selectedModelOption?.displayName ?? effectiveModel
+        let name = selectedModelOption?.displayName ?? resolvedSelectedModelId
         if let effort = effectiveEffort {
             return "\(name) · \(effort.shortName)"
         }

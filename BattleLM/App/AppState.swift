@@ -80,17 +80,15 @@ class AppState: ObservableObject {
 
     func defaultModelId(for type: AIType) -> String {
         if let override = defaultModelOverrides[type],
-           type.availableModels.contains(where: { $0.id == override || $0.actualModelId == override }) {
-            return override
+           let normalizedModelId = type.normalizeModelId(override) {
+            return normalizedModelId
         }
         return type.defaultModelId
     }
 
     /// 设置某个 AI 类型的默认模型，并立即应用到“仍跟随默认”的实例（selectedModel == nil）
     func setDefaultModel(_ modelId: String, for type: AIType) {
-        guard let normalizedModelId = type.availableModels
-            .first(where: { $0.id == modelId || $0.actualModelId == modelId })?
-            .id else { return }
+        guard let normalizedModelId = type.normalizeModelId(modelId) else { return }
 
         if normalizedModelId == type.defaultModelId {
             defaultModelOverrides.removeValue(forKey: type)
@@ -115,9 +113,7 @@ class AppState: ObservableObject {
         var result: [AIType: String] = [:]
         for (typeRaw, modelId) in raw {
             guard let type = AIType(rawValue: typeRaw),
-                  let normalizedModelId = type.availableModels
-                    .first(where: { $0.id == modelId || $0.actualModelId == modelId })?
-                    .id else { continue }
+                  let normalizedModelId = type.normalizeModelId(modelId) else { continue }
 
             if normalizedModelId != type.defaultModelId {
                 result[type] = normalizedModelId
@@ -255,8 +251,9 @@ class AppState: ObservableObject {
     /// 设置 AI 实例选中的模型
     func setSelectedModel(_ modelId: String?, for aiId: UUID) {
         updateAIInstance(aiId) { ai in
-            ai.selectedModel = modelId
-            if modelId == nil {
+            let normalizedModelId = modelId.flatMap { ai.type.normalizeModelId($0) }
+            ai.selectedModel = normalizedModelId
+            if normalizedModelId == nil {
                 ai.fallbackDefaultModelId = self.defaultModelId(for: ai.type)
             }
             ai.selectedReasoningEffort = nil  // 切换模型时重置推理深度

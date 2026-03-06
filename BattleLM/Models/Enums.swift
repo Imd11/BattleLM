@@ -131,9 +131,12 @@ enum AIType: String, Codable, CaseIterable, Identifiable {
         switch self {
         case .codex:
             return [
+                ModelOption(id: "gpt-5.4", displayName: "gpt-5.4",
+                           subtitle: "Product default Codex model ID. Availability depends on your Codex/OpenAI setup",
+                           isDefault: true,
+                           reasoningEfforts: fullEfforts, defaultEffort: .medium),
                 ModelOption(id: "gpt-5.3-codex", displayName: "gpt-5.3-codex",
                            subtitle: "Latest frontier agentic coding model",
-                           isDefault: true,
                            reasoningEfforts: fullEfforts, defaultEffort: .medium),
                 ModelOption(id: "gpt-5.2-codex", displayName: "gpt-5.2-codex",
                            subtitle: "Frontier agentic coding model",
@@ -185,6 +188,27 @@ enum AIType: String, Codable, CaseIterable, Identifiable {
         case .kimi:
             return []
         }
+    }
+
+    var supportsCustomModelId: Bool {
+        self == .codex
+    }
+
+    func isKnownModelId(_ modelId: String) -> Bool {
+        availableModels.contains(where: { $0.id == modelId || $0.actualModelId == modelId })
+    }
+
+    func normalizeModelId(_ modelId: String) -> String? {
+        let trimmed = modelId.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return nil }
+
+        if let normalized = availableModels
+            .first(where: { $0.id == trimmed || $0.actualModelId == trimmed })?
+            .id {
+            return normalized
+        }
+
+        return supportsCustomModelId ? trimmed : nil
     }
 
     /// 默认模型 ID
