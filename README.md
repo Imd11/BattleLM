@@ -27,11 +27,11 @@ It currently focuses on:
 
 ![BattleLM group chat](docs/images/readme/group.png)
 
-### iPhone Companion
+### All Usage Stats
 
-![BattleLM iPhone companion](docs/images/readme/ios.png)
+![BattleLM all usage stats](docs/images/readme/usage-all.png)
 
-### Usage Stats
+### Provider Usage Stats
 
 ![BattleLM usage stats](docs/images/readme/usage.png)
 
