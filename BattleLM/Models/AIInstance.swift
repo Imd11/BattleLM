@@ -8,7 +8,6 @@ struct AIInstance: Identifiable, Codable, Equatable, Hashable {
     let type: AIType
     var name: String
     var workingDirectory: String   // 工作目录
-    var tmuxSession: String
     var isActive: Bool
     var isEliminated: Bool
     var eliminationScore: Double
@@ -32,7 +31,6 @@ struct AIInstance: Identifiable, Codable, Equatable, Hashable {
         self.type = type
         self.name = name ?? "\(type.displayName)"
         self.workingDirectory = workingDirectory
-        self.tmuxSession = "battlelm-\(self.id.uuidString.prefix(8))"
         self.isActive = false
         self.isEliminated = false
         self.eliminationScore = 0

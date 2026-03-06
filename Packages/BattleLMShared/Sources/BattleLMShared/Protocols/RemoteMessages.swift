@@ -45,46 +45,6 @@ public struct AIResponsePayload: Codable {
     }
 }
 
-/// 终端选择提示 (Mac → iOS)
-public struct TerminalPromptPayload: Codable {
-    public let aiId: UUID
-    public let title: String
-    public let body: String?
-    public let hint: String?
-    public let options: [PromptOption]
-    
-    public struct PromptOption: Codable {
-        public let number: Int
-        public let label: String
-        
-        public init(number: Int, label: String) {
-            self.number = number
-            self.label = label
-        }
-    }
-    
-    public init(aiId: UUID, title: String, body: String?, hint: String?, options: [PromptOption]) {
-        self.aiId = aiId
-        self.title = title
-        self.body = body
-        self.hint = hint
-        self.options = options
-    }
-}
-
-/// 终端选择 (iOS → Mac)
-public struct TerminalChoicePayload: Codable {
-    public let type: String
-    public let aiId: UUID
-    public let choice: Int
-    
-    public init(aiId: UUID, choice: Int) {
-        self.type = "terminalChoice"
-        self.aiId = aiId
-        self.choice = choice
-    }
-}
-
 /// 同步请求 (iOS → Mac)
 public struct SyncRequestPayload: Codable {
     public let type: String

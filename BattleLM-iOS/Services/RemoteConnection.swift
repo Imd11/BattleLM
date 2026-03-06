@@ -16,7 +16,6 @@ class RemoteConnection: ObservableObject {
     @Published private(set) var messagesByAI: [UUID: [MessageDTO]] = [:]
     /// 1:1 Chat: show a "thinking" indicator after sending until we receive a non-user message.
     @Published private(set) var pendingAIResponses: Set<UUID> = []
-    @Published var currentPrompt: TerminalPromptPayload?
     @Published var aiList: [AIInfoDTO] = []
     @Published var groupChats: [GroupChatDTO] = []
     @Published var groupChatErrorMessage: String?
@@ -265,7 +264,6 @@ class RemoteConnection: ObservableObject {
         pendingAIResponses = []
         groupChats = []
         groupChatErrorMessage = nil
-        currentPrompt = nil
     }
     
     // MARK: - Receiving
@@ -370,9 +368,6 @@ class RemoteConnection: ObservableObject {
             
         case "aiResponse":
             handleAIResponse(data)
-            
-        case "terminalPrompt":
-            handleTerminalPrompt(data)
             
         case "aiStatus":
             handleAIStatus(data)
@@ -544,17 +539,6 @@ class RemoteConnection: ObservableObject {
         if payload.message.senderType != "user" {
             pendingAIResponses.remove(payload.aiId)
         }
-    }
-    
-    private func handleTerminalPrompt(_ data: Data) {
-        guard let event = try? JSONDecoder().decode(RemoteEvent.self, from: data),
-              let payloadData = event.payloadJSON.data(using: .utf8),
-              let payload = try? JSONDecoder().decode(TerminalPromptPayload.self, from: payloadData) else {
-            return
-        }
-        
-        lastSeq = event.seq
-        currentPrompt = payload
     }
     
     private func handleAIStatus(_ data: Data) {
@@ -838,13 +822,6 @@ class RemoteConnection: ObservableObject {
         }
     }
     
-    func submitChoice(_ choice: Int, for aiId: UUID) async throws {
-        guard state == .connected else { return }
-        let payload = TerminalChoicePayload(aiId: aiId, choice: choice)
-        try await send(payload)
-        currentPrompt = nil
-    }
-
     func createGroupChat(name: String, memberIds: [UUID]) async throws {
         guard state == .connected else { return }
         let payload = CreateGroupChatPayload(name: name, memberIds: memberIds)

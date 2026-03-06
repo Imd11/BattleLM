@@ -49,14 +49,7 @@ struct DependencyChecker {
     }
     
     /// 必需的依赖
-    static let required: [Dependency] = [
-        Dependency(
-            name: "tmux",
-            command: "tmux",
-            installHint: "brew install tmux",
-            installURL: nil
-        )
-    ]
+    static let required: [Dependency] = []
     
     /// AI CLI 依赖 - 小白友好安装指令 (2025)
     static let aiCLIs: [AIType: Dependency] = [
@@ -266,6 +259,12 @@ struct DependencyChecker {
         return configPaths.contains { path in
             FileManager.default.fileExists(atPath: path)
         }
+    }
+
+    private struct CommandResult {
+        let stdout: String
+        let stderr: String
+        let exitCode: Int32
     }
     
     /// 使用 zsh 执行命令：

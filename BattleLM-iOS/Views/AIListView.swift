@@ -86,9 +86,6 @@ struct AIListView: View {
         .sheet(isPresented: $showCreateGroupChat) {
             CreateGroupChatView()
         }
-        .sheet(item: $connection.currentPrompt) { prompt in
-            TerminalPromptSheet(prompt: prompt)
-        }
         .alert("Group Chat Error", isPresented: Binding(
             get: { connection.groupChatErrorMessage != nil },
             set: { _ in connection.groupChatErrorMessage = nil }
@@ -222,80 +219,5 @@ struct GroupChatRow: View {
                 .foregroundColor(.secondary)
         }
         .padding(.vertical, 4)
-    }
-}
-
-// MARK: - Terminal Prompt Sheet
-
-extension TerminalPromptPayload: Identifiable {
-    public var id: UUID { aiId }
-}
-
-struct TerminalPromptSheet: View {
-    let prompt: TerminalPromptPayload
-    @EnvironmentObject var connection: RemoteConnection
-    @Environment(\.dismiss) private var dismiss
-    
-    var body: some View {
-        NavigationStack {
-            VStack(spacing: 24) {
-                // Warning icon
-                Image(systemName: "exclamationmark.triangle.fill")
-                    .font(.system(size: 48))
-                    .foregroundColor(.orange)
-                
-                // Title
-                Text(prompt.title)
-                    .font(.title2)
-                    .fontWeight(.semibold)
-                    .multilineTextAlignment(.center)
-                
-                // Body
-                if let body = prompt.body {
-                    Text(body)
-                        .foregroundColor(.secondary)
-                        .multilineTextAlignment(.center)
-                        .padding(.horizontal)
-                }
-                
-                // Hint (command)
-                if let hint = prompt.hint {
-                    Text(hint)
-                        .font(.system(.body, design: .monospaced))
-                        .padding()
-                        .background(Color(.secondarySystemGroupedBackground))
-                        .cornerRadius(8)
-                }
-                
-                // Options
-                VStack(spacing: 12) {
-                    ForEach(prompt.options, id: \.number) { option in
-                        Button {
-                            Task {
-                                try? await connection.submitChoice(option.number, for: prompt.aiId)
-                                dismiss()
-                            }
-                        } label: {
-                            Text("\(option.number). \(option.label)")
-                                .frame(maxWidth: .infinity)
-                                .padding()
-                        }
-                        .buttonStyle(.bordered)
-                        .tint(option.number == 1 ? .blue : nil)
-                    }
-                }
-                .padding(.horizontal)
-                
-                Spacer()
-            }
-            .padding()
-            .navigationTitle("Confirm")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") { dismiss() }
-                }
-            }
-        }
     }
 }

@@ -156,27 +156,6 @@ struct AIResponsePayload: Codable {
     let isStreaming: Bool
 }
 
-/// 终端选择提示 (Mac → iOS)
-struct TerminalPromptPayload: Codable {
-    let aiId: UUID
-    let title: String
-    let body: String?
-    let hint: String?
-    let options: [PromptOption]
-    
-    struct PromptOption: Codable {
-        let number: Int
-        let label: String
-    }
-}
-
-/// 终端选择 (iOS → Mac)
-struct TerminalChoicePayload: Codable {
-    let type: String
-    let aiId: UUID
-    let choice: Int
-}
-
 // MARK: - Group Chats
 
 /// 创建群聊 (iOS → Mac)

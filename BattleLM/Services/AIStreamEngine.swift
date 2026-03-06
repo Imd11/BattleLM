@@ -1,8 +1,8 @@
 // BattleLM/Services/AIStreamEngine.swift
-// JSON Stream Engine — 绕过 tmux，直接消费 CLI 的结构化输出
+// JSON Stream Engine — 直接消费 CLI 的结构化输出
 //
-// 当前默认路径：Claude/Codex/Gemini/Qwen 走 headless JSON 流。
-// 不支持的 AI 类型 / slash command / JSONStream 失败时，自动 fallback 到 LegacyTmuxEngine。
+// 当前路径：Claude/Codex/Gemini/Qwen 走 headless JSON 流。
+// tmux fallback 已移除；不支持的 AI 类型会直接报错。
 
 import Foundation
 import Combine
@@ -10,7 +10,6 @@ import Combine
 // MARK: - Protocol
 
 /// 统一的 AI 消息引擎接口。
-/// `LegacyTmuxEngine` 包装 SessionManager（旧路径），`JSONStreamEngine` 直接 spawn 进程。
 protocol AIStreamEngine {
     func startSession(for ai: AIInstance) async throws
     func stopSession(for ai: AIInstance) async throws
@@ -26,54 +25,12 @@ protocol AIStreamEngine {
     func clearPendingMessages(for aiIds: Set<UUID>) async
 }
 
-// MARK: - Legacy Tmux Engine (旧路径包装，零行为变更)
-
-/// 直接委托给 `SessionManager.shared`，与重构前行为完全一致。
-struct LegacyTmuxEngine: AIStreamEngine {
-    private let sm = SessionManager.shared
-
-    func startSession(for ai: AIInstance) async throws {
-        try await sm.startSession(for: ai)
-    }
-
-    func stopSession(for ai: AIInstance) async throws {
-        try await sm.stopSession(for: ai)
-    }
-
-    func sendMessage(_ message: String, to ai: AIInstance) async throws {
-        try await sm.sendMessage(message, to: ai)
-    }
-
-    func waitForResponse(from ai: AIInstance,
-                         stableSeconds: Double = 3.0,
-                         maxWait: Double = 60.0) async throws -> String {
-        try await sm.waitForResponse(from: ai, stableSeconds: stableSeconds, maxWait: maxWait)
-    }
-
-    func streamResponse(from ai: AIInstance,
-                        onUpdate: @escaping (String, Bool, Bool) -> Void,
-                        stableSeconds: Double = 4.0,
-                        maxWait: Double = 120.0) async throws {
-        try await sm.streamResponse(from: ai, onUpdate: onUpdate, stableSeconds: stableSeconds, maxWait: maxWait)
-    }
-
-    func sendEscapeToSessions(for aiIds: Set<UUID>?) async {
-        await sm.sendEscapeToSessions(for: aiIds)
-    }
-
-    func clearPendingMessages(for aiIds: Set<UUID>) async {
-        await sm.clearPendingMessages(for: aiIds)
-    }
-}
-
 // MARK: - JSON Stream Engine (新路径)
 
-/// 对支持 JSON 流的 CLI（Phase 1: 仅 Claude），直接 spawn 进程 + 消费 NDJSON stdout。
-/// 不支持的 AI 类型自动委托给 `LegacyTmuxEngine`。
+/// 对支持 JSON 流的 CLI，直接 spawn 进程 + 消费 NDJSON stdout。
 class JSONStreamEngine: AIStreamEngine {
     static let shared = JSONStreamEngine()
 
-    private let fallback = LegacyTmuxEngine()
     private let remoteBroadcaster = SessionManager.shared
 
     /// 正在运行的 headless 进程 [AI ID: Process]
@@ -100,35 +57,18 @@ class JSONStreamEngine: AIStreamEngine {
         }
     }
 
-    /// 当 headless 失败需要 fallback 到 tmux 时，懒启动 tmux 会话。
-    private func ensureTmuxFallback(for ai: AIInstance) async throws {
-        let sessionName = await MainActor.run { SessionManager.shared.activeSessions[ai.id] }
-        if sessionName == nil || sessionName == "__headless__" {
-            await SessionManager.shared.unregisterHeadlessSession(for: ai)
-            print("🔄 Lazy-starting tmux session for \(ai.name) (fallback)")
-            try await fallback.startSession(for: ai)
-        }
-    }
-
     // MARK: - Session Lifecycle
 
     func startSession(for ai: AIInstance) async throws {
-        if supportsHeadless(ai) {
-            // ⚡ Headless 模式：不启动 tmux，只注册 UI 状态（绿点亮起）
-            await SessionManager.shared.registerHeadlessSession(for: ai)
-        } else {
-            try await fallback.startSession(for: ai)
+        guard supportsHeadless(ai) else {
+            throw SessionError.unsupported("\(ai.type.displayName) does not support headless mode.")
         }
+        await SessionManager.shared.registerHeadlessSession(for: ai)
     }
 
     func stopSession(for ai: AIInstance) async throws {
         cancelProcess(for: ai.id)
-        let sessionName = await MainActor.run { SessionManager.shared.activeSessions[ai.id] }
-        if sessionName == "__headless__" {
-            await SessionManager.shared.unregisterHeadlessSession(for: ai)
-        } else {
-            try await fallback.stopSession(for: ai)
-        }
+        await SessionManager.shared.unregisterHeadlessSession(for: ai)
     }
 
     func sendEscapeToSessions(for aiIds: Set<UUID>?) async {
@@ -136,47 +76,47 @@ class JSONStreamEngine: AIStreamEngine {
         for id in targets {
             cancelProcess(for: id)
         }
-        await fallback.sendEscapeToSessions(for: aiIds)
     }
 
     func clearPendingMessages(for aiIds: Set<UUID>) async {
-        await fallback.clearPendingMessages(for: aiIds)
+        lock.withLock {
+            for aiId in aiIds {
+                pendingMessages.removeValue(forKey: aiId)
+                pendingAssistantMessageIds.removeValue(forKey: aiId)
+            }
+        }
     }
 
     // MARK: - Send + Stream (核心路径)
 
     func sendMessage(_ message: String, to ai: AIInstance) async throws {
-        if supportsHeadless(ai) {
-            lock.withLock { pendingMessages[ai.id] = message }
-
-            // iOS 端不会本地回显用户消息，必须由 Mac 主机广播。
-            // LegacyTmuxEngine 会在 SessionManager.sendMessage 内广播；headless 模式需要在这里补齐。
-            let userEvent = MessageDTO(
-                id: UUID(),
-                senderId: ai.id,
-                senderType: "user",
-                senderName: "You",
-                content: message,
-                timestamp: Date()
-            )
-            remoteBroadcaster.broadcastToRemote(aiId: ai.id, message: userEvent, isStreaming: false)
-            return
+        guard supportsHeadless(ai) else {
+            throw SessionError.unsupported("\(ai.type.displayName) does not support headless mode.")
         }
-        try await fallback.sendMessage(message, to: ai)
+
+        lock.withLock { pendingMessages[ai.id] = message }
+
+        let userEvent = MessageDTO(
+            id: UUID(),
+            senderId: ai.id,
+            senderType: "user",
+            senderName: "You",
+            content: message,
+            timestamp: Date()
+        )
+        remoteBroadcaster.broadcastToRemote(aiId: ai.id, message: userEvent, isStreaming: false)
     }
 
     func waitForResponse(from ai: AIInstance,
                          stableSeconds: Double = 3.0,
                          maxWait: Double = 60.0) async throws -> String {
         guard supportsHeadless(ai) else {
-            return try await fallback.waitForResponse(from: ai, stableSeconds: stableSeconds, maxWait: maxWait)
+            throw SessionError.unsupported("\(ai.type.displayName) does not support headless mode.")
         }
 
         let message = lock.withLock { pendingMessages.removeValue(forKey: ai.id) }
         guard let message else {
-            print("⚠️ JSONStreamEngine: no pending message for \(ai.name), falling back to tmux")
-            try await ensureTmuxFallback(for: ai)
-            return try await fallback.waitForResponse(from: ai, stableSeconds: stableSeconds, maxWait: maxWait)
+            throw SessionError.commandFailed("No pending message for \(ai.name).")
         }
 
         do {
@@ -199,16 +139,12 @@ class JSONStreamEngine: AIStreamEngine {
                         stableSeconds: Double = 4.0,
                         maxWait: Double = 120.0) async throws {
         guard supportsHeadless(ai) else {
-            try await fallback.streamResponse(from: ai, onUpdate: onUpdate, stableSeconds: stableSeconds, maxWait: maxWait)
-            return
+            throw SessionError.unsupported("\(ai.type.displayName) does not support headless mode.")
         }
 
         let message = lock.withLock { pendingMessages.removeValue(forKey: ai.id) }
         guard let message else {
-            print("⚠️ JSONStreamEngine: no pending message for \(ai.name), falling back to tmux")
-            try await ensureTmuxFallback(for: ai)
-            try await fallback.streamResponse(from: ai, onUpdate: onUpdate, stableSeconds: stableSeconds, maxWait: maxWait)
-            return
+            throw SessionError.commandFailed("No pending message for \(ai.name).")
         }
 
         do {

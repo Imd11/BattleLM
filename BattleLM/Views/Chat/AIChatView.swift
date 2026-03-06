@@ -13,26 +13,15 @@ struct AIChatView: View {
     @State private var streamingMessageId: UUID? = nil
     @State private var pendingScrollToMessageId: UUID? = nil
     @State private var focusRequestId: UUID? = nil
-    @State private var isSubmittingTerminalChoice: Bool = false
     @State private var isInputFocused: Bool = false
     
     private var canSend: Bool {
         !isLoading
-        && !(isAwaitingTerminalChoice && !supportsHeadlessChat)
         && !inputText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
     private var currentAI: AIInstance {
         appState.aiInstance(for: ai.id) ?? ai
-    }
-
-    private var supportsHeadlessChat: Bool {
-        switch currentAI.type {
-        case .claude, .codex, .gemini, .qwen:
-            return true
-        default:
-            return false
-        }
     }
 
     @State private var isStartHovered = false
@@ -42,14 +31,6 @@ struct AIChatView: View {
 
     private var isSessionRunning: Bool {
         sessionManager.sessionStatus[ai.id] == .running
-    }
-
-    private var terminalChoicePrompt: TerminalChoicePrompt? {
-        sessionManager.terminalChoicePrompts[ai.id]
-    }
-
-    private var isAwaitingTerminalChoice: Bool {
-        terminalChoicePrompt != nil
     }
     
     /// 从 AppState 获取当前 AI 的消息
@@ -129,7 +110,7 @@ struct AIChatView: View {
                                 }
 
                                 // AI 正在思考（在真正有文本输出前显示）
-                                if isLoading && streamingMessageId == nil && !isAwaitingTerminalChoice {
+                                if isLoading && streamingMessageId == nil {
                                     HStack(alignment: .center, spacing: 12) {
                                         Spacer()
                                             .frame(width: geometry.size.width * 0.15)
@@ -184,35 +165,6 @@ struct AIChatView: View {
                 clearInputFocus()
             })
 
-            // ⚡ Headless 模式下不显示终端确认卡片（没有 tmux 会话产生 prompt）
-            if let prompt = terminalChoicePrompt, !supportsHeadlessChat {
-                TerminalChoicePromptCard(
-                    aiName: currentAI.name,
-                    prompt: prompt,
-                    isSubmitting: isSubmittingTerminalChoice,
-                    onOpenTerminal: {
-                        // Terminal panel removed — using headless bridge
-                    },
-                    onSelect: { option in
-                        guard !isSubmittingTerminalChoice else { return }
-                        isSubmittingTerminalChoice = true
-                        Task {
-                            do {
-                                try await sessionManager.submitTerminalChoice(option.number, for: currentAI)
-                            } catch {
-                                let errorMessage = Message.systemMessage("❌ Failed to respond: \(error.localizedDescription)")
-                                appState.appendMessage(errorMessage, to: currentAI.id)
-                            }
-                            await MainActor.run {
-                                isSubmittingTerminalChoice = false
-                                requestInputFocus()
-                            }
-                        }
-                    }
-                )
-                .padding(.horizontal)
-                .padding(.vertical, 10)
-            }
             // 输入面板 — 两行布局，用 GeometryReader 匹配聊天气泡的左右边距
             GeometryReader { inputGeo in
                 let sideInset = 16 + inputGeo.size.width * 0.15
@@ -360,11 +312,7 @@ struct AIChatView: View {
         let trimmed = inputText.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !isLoading, !trimmed.isEmpty else { return }
 
-        // 若终端正在等待用户确认（信任/权限等），先让用户完成确认再发送（保留输入框内容）
-        // ⚡ Headless JSON 流模式下，非 slash command 消息不依赖 tmux 提示
         let isTerminalCommand = trimmed.hasPrefix("/")
-        let headlessBypass = supportsHeadlessChat && !isTerminalCommand
-        guard !isAwaitingTerminalChoice || headlessBypass else { return }
 
         let question = trimmed
 
@@ -380,22 +328,6 @@ struct AIChatView: View {
                     appState.setAIActive(true, for: currentAI.id)
                 }
 
-                // 某些 CLI（尤其 Claude）会在启动/执行工具前弹出需要用户选择的提示；
-                // 检测到后直接展示卡片，保留用户输入以便确认后继续发送。
-                //
-                // ⚡ Headless JSON 流模式下的聊天消息不走 tmux，
-                // tmux 终端里的权限提示与聊天路径无关，跳过检测。
-                let useHeadless = supportsHeadlessChat && !isTerminalCommand
-                if !useHeadless {
-                    if await sessionManager.checkAndUpdateTerminalChoicePrompt(for: currentAI) != nil {
-                        await MainActor.run {
-                            isLoading = false
-                            streamingMessageId = nil
-                        }
-                        return
-                    }
-                }
-
                 await MainActor.run {
                     let userMessage = Message(
                         senderId: UUID(),
@@ -409,29 +341,18 @@ struct AIChatView: View {
                     inputText = ""
                 }
 
-                // 终端控制指令（/status /model /stats ...）：
-                // - 不进入“等待 AI 回复”的 streaming 状态机（否则容易长期转圈并触发 busy）
-                // - 尝试把终端打印的结果回显到聊天区（尤其是 /status 这类状态面板）
                 if isTerminalCommand {
-                    try await sessionManager.sendTerminalCommand(question, to: currentAI)
-                    let output = try await sessionManager.captureTerminalCommandOutput(for: currentAI, command: question)
-
                     await MainActor.run {
                         isLoading = false
                         streamingMessageId = nil
-
-                        if let output, !output.isEmpty {
-                            // 终端控制指令输出（例如 /status）来自“该 AI 的终端”，
-                            // 在 1:1 聊天中希望显示 AI 头像而非居中系统提示。
-                            let terminalPanelMessage = Message(
-                                senderId: currentAI.id,
-                                senderType: .ai,
-                                senderName: currentAI.name,
-                                content: output,
-                                messageType: .system
-                            )
-                            appState.appendMessage(terminalPanelMessage, to: currentAI.id)
-                        }
+                        let terminalPanelMessage = Message(
+                            senderId: currentAI.id,
+                            senderType: .system,
+                            senderName: "System",
+                            content: "Slash commands are no longer supported. Send a normal chat message instead.",
+                            messageType: .system
+                        )
+                        appState.appendMessage(terminalPanelMessage, to: currentAI.id)
                     }
                     return
                 }
@@ -467,34 +388,6 @@ struct AIChatView: View {
                 }
             }
         }
-    }
-    
-    /// 提取输出中的新增内容
-    private func extractNewContent(before: String, after: String) -> String {
-        let beforeLines = Set(before.split(separator: "\n").map { String($0) })
-        let afterLines = after.split(separator: "\n").map { String($0) }
-        
-        // 找出新增的行
-        var newLines: [String] = []
-        for line in afterLines {
-            let trimmed = line.trimmingCharacters(in: .whitespaces)
-            // 跳过空行、边框字符、命令提示符
-            if trimmed.isEmpty { continue }
-            if trimmed.hasPrefix(">") || trimmed.hasPrefix("$") || trimmed.hasPrefix("%") { continue }
-            if trimmed.contains("──") || trimmed.contains("│") { continue }
-            
-            // 检查是否是新行
-            if !beforeLines.contains(line) {
-                // AI 响应通常以特定字符开头
-                if trimmed.hasPrefix("✦") || trimmed.hasPrefix("•") || 
-                   trimmed.hasPrefix("I ") || trimmed.hasPrefix("The ") ||
-                   trimmed.count > 20 {
-                    newLines.append(trimmed)
-                }
-            }
-        }
-        
-        return newLines.joined(separator: "\n")
     }
     
     private func toggleSession() {
