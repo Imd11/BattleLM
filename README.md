@@ -27,6 +27,10 @@ It currently focuses on:
 
 ![BattleLM group chat](docs/images/readme/group.png)
 
+### Group Debate / Exchange on macOS
+
+![BattleLM group debate and exchange](docs/images/readme/group-dark-exchange.png)
+
 ### All Usage Stats
 
 ![BattleLM all usage stats](docs/images/readme/usage-all.png)
