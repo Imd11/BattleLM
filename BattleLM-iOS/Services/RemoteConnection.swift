@@ -183,7 +183,8 @@ class RemoteConnection: ObservableObject {
             throw AuthError.invalidQRCode
         }
         
-        session = URLSession(configuration: makeSessionConfiguration(bypassSystemProxy: bypassSystemProxy))
+        let shouldBypassProxy = bypassSystemProxy || shouldBypassProxyForEndpoint(endpoint)
+        session = URLSession(configuration: makeSessionConfiguration(bypassSystemProxy: shouldBypassProxy))
         webSocket = session?.webSocketTask(with: url)
         webSocket?.resume()
         
@@ -681,7 +682,13 @@ class RemoteConnection: ObservableObject {
         if nsError.domain == NSURLErrorDomain, nsError.code == -1011 {
             var lines: [String] = []
             lines.append("Server connection failed (tunnel may have expired).")
-            lines.append("Please try scanning the QR code again to get a fresh connection.")
+            if pairingUsedFallback {
+                lines.append("LAN direct connection also failed. Please ensure iPhone and Mac are on the same Wi-Fi and the Mac app is running.")
+            } else if let hint = pairingFallbackEndpoint {
+                lines.append("Will try LAN direct connection: \(hint)")
+            } else {
+                lines.append("Please try scanning the QR code again to get a fresh connection.")
+            }
             return lines.joined(separator: "\n")
         }
         return nsError.localizedDescription
@@ -760,7 +767,8 @@ class RemoteConnection: ObservableObject {
              NSURLErrorNetworkConnectionLost,
              NSURLErrorTimedOut,
              NSURLErrorNotConnectedToInternet,
-             NSURLErrorSecureConnectionFailed:
+             NSURLErrorSecureConnectionFailed,
+             -1011:
             return true
         default:
             return false
@@ -772,11 +780,43 @@ class RemoteConnection: ObservableObject {
         return nsError.domain == NSURLErrorDomain && nsError.code == NSURLErrorSecureConnectionFailed
     }
 
+    private func shouldBypassProxyForEndpoint(_ endpoint: String) -> Bool {
+        guard let url = URL(string: endpoint),
+              let host = url.host?.lowercased() else {
+            return false
+        }
+
+        if url.scheme == "ws" {
+            if host == "localhost" || host == "127.0.0.1" {
+                return true
+            }
+
+            let parts = host.split(separator: ".")
+            if parts.count == 4,
+               let first = Int(parts[0]),
+               let second = Int(parts[1]) {
+                if first == 10 || first == 127 {
+                    return true
+                }
+                if first == 192 && second == 168 {
+                    return true
+                }
+                if first == 172 && (16...31).contains(second) {
+                    return true
+                }
+            }
+        }
+
+        return false
+    }
+
     private func makeSessionConfiguration(bypassSystemProxy: Bool) -> URLSessionConfiguration {
         let config = URLSessionConfiguration.default
         if bypassSystemProxy {
             config.connectionProxyDictionary = [
                 kCFNetworkProxiesHTTPEnable as String: 0,
+                "HTTPSEnable": 0,
+                "SOCKSEnable": 0,
                 kCFNetworkProxiesProxyAutoConfigEnable as String: 0
             ]
         }

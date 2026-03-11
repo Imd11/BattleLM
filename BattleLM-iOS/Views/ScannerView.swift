@@ -139,6 +139,7 @@ class QRScannerViewController: UIViewController, AVCaptureMetadataOutputObjectsD
     var captureSession: AVCaptureSession?
     var previewLayer: AVCaptureVideoPreviewLayer?
     var onCodeScanned: ((String) -> Void)?
+    private var hasDeliveredCode = false
     
     override func viewDidLoad() {
         super.viewDidLoad()
@@ -187,6 +188,7 @@ class QRScannerViewController: UIViewController, AVCaptureMetadataOutputObjectsD
     }
     
     func startScanning() {
+        hasDeliveredCode = false
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
             self?.captureSession?.startRunning()
         }
@@ -197,11 +199,14 @@ class QRScannerViewController: UIViewController, AVCaptureMetadataOutputObjectsD
     }
     
     func metadataOutput(_ output: AVCaptureMetadataOutput, didOutput metadataObjects: [AVMetadataObject], from connection: AVCaptureConnection) {
+        guard !hasDeliveredCode else { return }
         guard let metadataObject = metadataObjects.first as? AVMetadataMachineReadableCodeObject,
               let stringValue = metadataObject.stringValue else {
             return
         }
-        
+
+        hasDeliveredCode = true
+        stopScanning()
         AudioServicesPlaySystemSound(SystemSoundID(kSystemSoundID_Vibrate))
         onCodeScanned?(stringValue)
     }

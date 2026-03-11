@@ -5,6 +5,7 @@ import CoreText
 @main
 struct BattleLMiOSApp: App {
     @StateObject private var connection = RemoteConnection()
+    @StateObject private var aiDataConsentStore = AIDataConsentStore()
 
     init() {
         registerCustomFonts()
@@ -14,6 +15,7 @@ struct BattleLMiOSApp: App {
         WindowGroup {
             ContentView()
                 .environmentObject(connection)
+                .environmentObject(aiDataConsentStore)
         }
     }
 }

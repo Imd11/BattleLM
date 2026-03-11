@@ -5,8 +5,12 @@ import BattleLMShared
 struct RemoteChatView: View {
     let ai: AIInfoDTO
     @EnvironmentObject var connection: RemoteConnection
+    @EnvironmentObject var aiDataConsentStore: AIDataConsentStore
     
     @State private var inputText = ""
+    @State private var pendingMessageForConsent: String?
+    @State private var consentDisclosures: [AIProviderDisclosure] = []
+    @State private var showConsentSheet = false
     @FocusState private var isInputFocused: Bool
     
     var body: some View {
@@ -44,6 +48,12 @@ struct RemoteChatView: View {
         }
         .navigationTitle(ai.name)
         .navigationBarTitleDisplayMode(.inline)
+        .sheet(isPresented: $showConsentSheet) {
+            AIDataConsentSheet(disclosures: consentDisclosures) {
+                aiDataConsentStore.approve(providers: [ai.provider])
+                sendConfirmedMessage()
+            }
+        }
         .toolbar {
             ToolbarItem(placement: .navigationBarTrailing) {
                 HStack(spacing: 4) {
@@ -80,9 +90,29 @@ struct RemoteChatView: View {
     private func sendMessage() {
         let text = inputText.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty else { return }
-        
+
+        if aiDataConsentStore.requiresConsent(for: [ai.provider]) {
+            pendingMessageForConsent = text
+            consentDisclosures = aiDataConsentStore.missingDisclosures(for: [ai.provider])
+            showConsentSheet = true
+            return
+        }
+
         inputText = ""
-        
+        pendingMessageForConsent = text
+        sendConfirmedMessage()
+    }
+
+    private func sendConfirmedMessage() {
+        guard let text = pendingMessageForConsent?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !text.isEmpty else {
+            pendingMessageForConsent = nil
+            return
+        }
+
+        inputText = ""
+        pendingMessageForConsent = nil
+
         Task {
             try? await connection.sendMessage(text, to: ai.id)
         }
