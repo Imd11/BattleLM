@@ -12,17 +12,20 @@ struct AIProviderDisclosure: Identifiable, Hashable {
 @MainActor
 final class AIDataConsentStore: ObservableObject {
     private let storageKey = "approvedAIProviderKeys"
+    private let initialNoticeKey = "hasCompletedInitialAIDataNotice"
     private let defaults: UserDefaults
 
     @Published private(set) var approvedProviderKeys: Set<String>
+    @Published private(set) var hasCompletedInitialNotice: Bool
 
     init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
         self.approvedProviderKeys = Set(defaults.stringArray(forKey: storageKey) ?? [])
+        self.hasCompletedInitialNotice = defaults.bool(forKey: initialNoticeKey)
     }
 
     func requiresConsent(for providers: [String]) -> Bool {
-        !missingDisclosures(for: providers).isEmpty
+        !hasCompletedInitialNotice || !missingDisclosures(for: providers).isEmpty
     }
 
     func missingDisclosures(for providers: [String]) -> [AIProviderDisclosure] {
@@ -45,9 +48,15 @@ final class AIDataConsentStore: ObservableObject {
                 .filter { !$0.isEmpty }
         )
 
-        guard !normalized.isEmpty else { return }
-        approvedProviderKeys.formUnion(normalized)
-        defaults.set(Array(approvedProviderKeys).sorted(), forKey: storageKey)
+        if !normalized.isEmpty {
+            approvedProviderKeys.formUnion(normalized)
+            defaults.set(Array(approvedProviderKeys).sorted(), forKey: storageKey)
+        }
+
+        if !hasCompletedInitialNotice {
+            hasCompletedInitialNotice = true
+            defaults.set(true, forKey: initialNoticeKey)
+        }
     }
 
     static func disclosures(for providers: [String]) -> [AIProviderDisclosure] {

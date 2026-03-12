@@ -5,8 +5,10 @@ import UIKit
 /// AI List View
 struct AIListView: View {
     @EnvironmentObject var connection: RemoteConnection
+    @EnvironmentObject var aiDataConsentStore: AIDataConsentStore
     @State private var selectedAI: AIInfoDTO?
     @State private var showCreateGroupChat = false
+    @State private var showRemoteAccessNotice = false
     
     var body: some View {
         VStack(spacing: 0) {
@@ -77,6 +79,20 @@ struct AIListView: View {
         .sheet(isPresented: $showCreateGroupChat) {
             CreateGroupChatView()
         }
+        .fullScreenCover(isPresented: $showRemoteAccessNotice) {
+            AIRemoteAccessNoticeView(
+                disclosures: AIDataConsentStore.disclosures(for: currentProviders),
+                onDecline: {
+                    showRemoteAccessNotice = false
+                    connection.disconnect()
+                },
+                onApprove: {
+                    aiDataConsentStore.approve(providers: currentProviders)
+                    showRemoteAccessNotice = false
+                }
+            )
+            .interactiveDismissDisabled()
+        }
         .alert("Group Chat Error", isPresented: Binding(
             get: { connection.groupChatErrorMessage != nil },
             set: { _ in connection.groupChatErrorMessage = nil }
@@ -84,6 +100,12 @@ struct AIListView: View {
             Button("OK", role: .cancel) {}
         } message: {
             Text(connection.groupChatErrorMessage ?? "")
+        }
+        .onAppear {
+            presentRemoteAccessNoticeIfNeeded()
+        }
+        .onChange(of: providerConsentSignature) { _ in
+            presentRemoteAccessNoticeIfNeeded()
         }
     }
     
@@ -123,6 +145,30 @@ struct AIListView: View {
         Task {
             try? await connection.reconnect(to: device)
         }
+    }
+
+    private var currentProviders: [String] {
+        Array(
+            Set(
+                connection.aiList
+                    .map(\.provider)
+                    .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+                    .filter { !$0.isEmpty }
+            )
+        ).sorted()
+    }
+
+    private var providerConsentSignature: String {
+        "\(aiDataConsentStore.hasCompletedInitialNotice)|" + currentProviders.joined(separator: "|")
+    }
+
+    private func presentRemoteAccessNoticeIfNeeded() {
+        guard !currentProviders.isEmpty else {
+            showRemoteAccessNotice = false
+            return
+        }
+
+        showRemoteAccessNotice = aiDataConsentStore.requiresConsent(for: currentProviders)
     }
 }
 

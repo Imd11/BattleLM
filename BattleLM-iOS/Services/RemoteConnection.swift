@@ -32,6 +32,7 @@ class RemoteConnection: ObservableObject {
     private var pairingFallbackEndpoint: String?
     private var pairingUsedFallback = false
     private var reconnectLocalEndpoint: String?  // Local endpoint for reconnection fallback
+    private var reconnectPrimaryEndpoint: String?
     private var autoReconnectTask: Task<Void, Never>?
     private var reconnectAttempts = 0
     private let maxReconnectAttempts = 3
@@ -70,20 +71,29 @@ class RemoteConnection: ObservableObject {
         }
         // Sanitize legacy data:
         // - historically `id` could be a deviceId (not unique across endpoints) which breaks `ForEach`.
-        // - we now use `endpoint` as the unique identifier.
-        var seenEndpoints: Set<String> = []
-        let normalized = devices.compactMap { device -> PairedDevice? in
-            guard !device.endpoint.isEmpty else { return nil }
-            guard !seenEndpoints.contains(device.endpoint) else { return nil }
-            seenEndpoints.insert(device.endpoint)
-            return PairedDevice(
-                id: device.endpoint,
+        // - older builds could accidentally promote the local ws:// endpoint to primary.
+        // - we now merge records by canonical primary endpoint and preserve the newest local fallback.
+        var normalizedByEndpoint: [String: PairedDevice] = [:]
+        for device in devices {
+            guard !device.endpoint.isEmpty else { continue }
+
+            let primary = canonicalPrimaryEndpoint(for: device)
+            let local = canonicalLocalEndpoint(for: device)
+            let normalized = PairedDevice(
+                id: primary,
                 name: device.name,
-                endpoint: device.endpoint,
-                endpointLocal: device.endpointLocal,
+                endpoint: primary,
+                endpointLocal: local,
                 lastConnected: device.lastConnected
             )
+
+            if let existing = normalizedByEndpoint[primary] {
+                normalizedByEndpoint[primary] = merged(device: existing, with: normalized)
+            } else {
+                normalizedByEndpoint[primary] = normalized
+            }
         }
+        let normalized = normalizedByEndpoint.values.sorted { $0.lastConnected > $1.lastConnected }
         pairedDevices = normalized
 
         if let normalizedData = try? JSONEncoder().encode(normalized) {
@@ -92,10 +102,23 @@ class RemoteConnection: ObservableObject {
     }
     
     private func savePairedDevice(_ device: PairedDevice) {
+        let primary = canonicalPrimaryEndpoint(for: device)
+        let normalized = PairedDevice(
+            id: primary,
+            name: device.name,
+            endpoint: primary,
+            endpointLocal: canonicalLocalEndpoint(for: device),
+            lastConnected: device.lastConnected
+        )
+
         var devices = pairedDevices
-        // Deduplicate by endpoint (same Mac = same endpoint), not by id
-        devices.removeAll { $0.endpoint == device.endpoint }
-        devices.insert(device, at: 0)
+        if let existingIndex = devices.firstIndex(where: { sameDevice($0, normalized) }) {
+            devices[existingIndex] = merged(device: devices[existingIndex], with: normalized)
+            let updated = devices.remove(at: existingIndex)
+            devices.insert(updated, at: 0)
+        } else {
+            devices.insert(normalized, at: 0)
+        }
         pairedDevices = devices
         
         if let data = try? JSONEncoder().encode(devices) {
@@ -105,7 +128,7 @@ class RemoteConnection: ObservableObject {
     
     /// Remove a paired device from the list
     func removePairedDevice(_ device: PairedDevice) {
-        pairedDevices.removeAll { $0.endpoint == device.endpoint }
+        pairedDevices.removeAll { sameDevice($0, device) }
         
         if let data = try? JSONEncoder().encode(pairedDevices) {
             UserDefaults.standard.set(data, forKey: pairedDevicesKey)
@@ -120,6 +143,7 @@ class RemoteConnection: ObservableObject {
         pairingCode = payload.pairingCode
         hasPairingCode = true
         pairingFallbackEndpoint = payload.endpointWsLocal
+        reconnectPrimaryEndpoint = payload.endpointWss
         pairingUsedFallback = false
         do {
             try await connectWithAutoProxyBypass(to: payload.endpointWss)
@@ -133,6 +157,7 @@ class RemoteConnection: ObservableObject {
     func reconnect(to device: PairedDevice) async throws {
         hasPairingCode = false
         pairingCode = nil
+        reconnectPrimaryEndpoint = device.endpoint
         reconnectLocalEndpoint = device.endpointLocal
         
         // Try local endpoint first (more stable than tunnel)
@@ -256,6 +281,7 @@ class RemoteConnection: ObservableObject {
         reconnectAttempts = 0
         pairingFallbackEndpoint = nil
         pairingUsedFallback = false
+        reconnectPrimaryEndpoint = nil
         webSocket?.cancel(with: .goingAway, reason: nil)
         webSocket = nil
         session = nil
@@ -291,9 +317,14 @@ class RemoteConnection: ObservableObject {
         print("⚠️ [RemoteConnection] Receive failed: \(error.localizedDescription)")
         
         // 保存当前连接的设备信息用于重连
-        if let endpoint = currentEndpoint, let device = pairedDevices.first(where: { $0.endpoint == endpoint }) {
+        if let endpoint = currentEndpoint, let device = pairedDevice(matching: endpoint) {
             lastConnectedDevice = device
         }
+
+        stopKeepAlive()
+        webSocket?.cancel(with: .goingAway, reason: nil)
+        webSocket = nil
+        session = nil
         
         // 尝试自动重连
         scheduleAutoReconnect()
@@ -407,19 +438,21 @@ class RemoteConnection: ObservableObject {
     private func handleAuthOK() {
         authTimeoutTask?.cancel()
         authTimeoutTask = nil
-        let localEndpoint = reconnectLocalEndpoint ?? pairingFallbackEndpoint
+        let primaryEndpoint = reconnectPrimaryEndpoint ?? currentEndpoint
+        let localEndpoint = resolvedLocalEndpoint()
         pairingFallbackEndpoint = nil
         pairingUsedFallback = false
         reconnectLocalEndpoint = nil
+        reconnectPrimaryEndpoint = nil
         state = .connected
         hasEverConnected = true
         startKeepAliveIfNeeded()
         
         // Save paired device with both endpoints
-        if let endpoint = currentEndpoint {
+        if let endpoint = primaryEndpoint {
             let device = PairedDevice(
                 id: endpoint,
-                name: "Mac",
+                name: lastConnectedDevice?.name ?? "Mac",
                 endpoint: endpoint,
                 endpointLocal: localEndpoint,
                 lastConnected: Date()
@@ -438,6 +471,7 @@ class RemoteConnection: ObservableObject {
         authTimeoutTask = nil
         pairingFallbackEndpoint = nil
         pairingUsedFallback = false
+        reconnectPrimaryEndpoint = nil
 
         if hasPairingCode {
             state = .error("Pairing failed: \(denied.error)")
@@ -476,15 +510,18 @@ class RemoteConnection: ObservableObject {
         
         authTimeoutTask?.cancel()
         authTimeoutTask = nil
-        let localEndpoint = pairingFallbackEndpoint  // Save before clearing
+        let primaryEndpoint = reconnectPrimaryEndpoint ?? currentEndpoint
+        let localEndpoint = resolvedLocalEndpoint()
         pairingFallbackEndpoint = nil
         pairingUsedFallback = false
+        reconnectLocalEndpoint = nil
+        reconnectPrimaryEndpoint = nil
         state = .connected
         hasEverConnected = true
         startKeepAliveIfNeeded()
         
         // Save paired device with both endpoints
-        if let endpoint = currentEndpoint {
+        if let endpoint = primaryEndpoint {
             let device = PairedDevice(
                 id: endpoint,
                 name: complete.macDeviceName,
@@ -607,6 +644,86 @@ class RemoteConnection: ObservableObject {
                 }
             }
         }
+    }
+
+    private func pairedDevice(matching endpoint: String) -> PairedDevice? {
+        pairedDevices.first { $0.endpoint == endpoint || $0.endpointLocal == endpoint }
+    }
+
+    private func sameDevice(_ lhs: PairedDevice, _ rhs: PairedDevice) -> Bool {
+        lhs.endpoint == rhs.endpoint ||
+        lhs.endpoint == rhs.endpointLocal ||
+        lhs.endpointLocal == rhs.endpoint ||
+        (lhs.endpointLocal != nil && lhs.endpointLocal == rhs.endpointLocal)
+    }
+
+    private func canonicalPrimaryEndpoint(for device: PairedDevice) -> String {
+        if isLocalEndpoint(device.endpoint), let alternate = device.endpointLocal, !isLocalEndpoint(alternate) {
+            return alternate
+        }
+        return device.endpoint
+    }
+
+    private func canonicalLocalEndpoint(for device: PairedDevice) -> String? {
+        if isLocalEndpoint(device.endpoint) {
+            return device.endpoint
+        }
+        if let local = device.endpointLocal, isLocalEndpoint(local) {
+            return local
+        }
+        return nil
+    }
+
+    private func merged(device existing: PairedDevice, with incoming: PairedDevice) -> PairedDevice {
+        let newer = incoming.lastConnected >= existing.lastConnected ? incoming : existing
+        let older = newer.id == existing.id ? incoming : existing
+        return PairedDevice(
+            id: newer.endpoint,
+            name: newer.name.isEmpty ? older.name : newer.name,
+            endpoint: newer.endpoint,
+            endpointLocal: newer.endpointLocal ?? older.endpointLocal,
+            lastConnected: max(existing.lastConnected, incoming.lastConnected)
+        )
+    }
+
+    private func resolvedLocalEndpoint() -> String? {
+        if let local = reconnectLocalEndpoint ?? pairingFallbackEndpoint {
+            return local
+        }
+        guard let endpoint = currentEndpoint, isLocalEndpoint(endpoint) else {
+            return nil
+        }
+        return endpoint
+    }
+
+    private func isLocalEndpoint(_ endpoint: String) -> Bool {
+        guard let url = URL(string: endpoint),
+              url.scheme == "ws",
+              let host = url.host?.lowercased() else {
+            return false
+        }
+
+        if host == "localhost" || host == "127.0.0.1" {
+            return true
+        }
+
+        let parts = host.split(separator: ".")
+        guard parts.count == 4,
+              let first = Int(parts[0]),
+              let second = Int(parts[1]) else {
+            return false
+        }
+
+        if first == 10 || first == 127 {
+            return true
+        }
+        if first == 192 && second == 168 {
+            return true
+        }
+        if first == 172 && (16...31).contains(second) {
+            return true
+        }
+        return false
     }
     
     private func presentableError(_ error: Error) -> String {

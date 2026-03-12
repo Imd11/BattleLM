@@ -270,6 +270,10 @@ class RemoteHostServer: ObservableObject {
                 if case .cancelled = state {
                     self?.connections.removeValue(forKey: id)
                     self?.updateConnectedDevices()
+                } else if case .failed(let error) = state {
+                    print("[RemoteHost] connection failed: \(error)")
+                    self?.connections.removeValue(forKey: id)
+                    self?.updateConnectedDevices()
                 }
             }
         }
