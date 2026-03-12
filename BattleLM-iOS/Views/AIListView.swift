@@ -81,13 +81,13 @@ struct AIListView: View {
         }
         .fullScreenCover(isPresented: $showRemoteAccessNotice) {
             AIRemoteAccessNoticeView(
-                disclosures: AIDataConsentStore.disclosures(for: currentProviders),
+                disclosures: AIDataConsentStore.allSupportedDisclosures,
                 onDecline: {
                     showRemoteAccessNotice = false
                     connection.disconnect()
                 },
                 onApprove: {
-                    aiDataConsentStore.approve(providers: currentProviders)
+                    aiDataConsentStore.approve(providers: AIDataConsentStore.allSupportedProviderKeys)
                     showRemoteAccessNotice = false
                 }
             )

@@ -11,6 +11,8 @@ struct AIProviderDisclosure: Identifiable, Hashable {
 
 @MainActor
 final class AIDataConsentStore: ObservableObject {
+    static let allSupportedProviderKeys = ["claude", "gemini", "codex", "qwen"]
+
     private let storageKey = "approvedAIProviderKeys"
     private let initialNoticeKey = "hasCompletedInitialAIDataNotice"
     private let defaults: UserDefaults
@@ -69,6 +71,10 @@ final class AIDataConsentStore: ObservableObject {
         )
         .sorted()
         .map(disclosure(for:))
+    }
+
+    static var allSupportedDisclosures: [AIProviderDisclosure] {
+        allSupportedProviderKeys.map(disclosure(for:))
     }
 
     static func normalizeProviderKey(_ raw: String) -> String {
