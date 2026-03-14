@@ -302,7 +302,7 @@ struct TokenUsageView: View {
                         )
                         .foregroundStyle(Color.primary.opacity(0.75))
                         .lineStyle(StrokeStyle(lineWidth: 3))
-                        .interpolationMethod(.monotone)
+                        .interpolationMethod(.linear)
 
                         AreaMark(
                             x: .value("Date", pt.date, unit: .day),
@@ -310,7 +310,7 @@ struct TokenUsageView: View {
                             series: .value("Series", "Total")
                         )
                         .foregroundStyle(Color.primary.opacity(0.04))
-                        .interpolationMethod(.monotone)
+                        .interpolationMethod(.linear)
 
                         if grandTotalIsSingle {
                             PointMark(
@@ -333,7 +333,7 @@ struct TokenUsageView: View {
                         )
                         .foregroundStyle(color)
                         .lineStyle(StrokeStyle(lineWidth: 2.5))
-                        .interpolationMethod(.monotone)
+                        .interpolationMethod(.linear)
 
                         if grandTotal.isEmpty {
                             AreaMark(
@@ -342,7 +342,7 @@ struct TokenUsageView: View {
                                 series: .value("Series", pt.source.rawValue)
                             )
                             .foregroundStyle(color.opacity(0.08))
-                            .interpolationMethod(.monotone)
+                            .interpolationMethod(.linear)
                         }
 
                         if singlePointSources.contains(pt.source.rawValue) {
@@ -368,7 +368,7 @@ struct TokenUsageView: View {
                         )
                         .foregroundStyle(color)
                         .lineStyle(style)
-                        .interpolationMethod(.monotone)
+                        .interpolationMethod(.linear)
 
                         if singlePointModels.contains(pt.model) {
                             PointMark(
