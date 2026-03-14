@@ -82,7 +82,7 @@ struct TokenUsageView: View {
     }
     
     // MARK: - All Overview Tab
-    
+
     @ViewBuilder
     private func allOverview(summary: TokenUsageSummary) -> some View {
         if summary.totalTokens == 0 {
@@ -97,72 +97,62 @@ struct TokenUsageView: View {
                     .font(.system(size: 32, weight: .bold, design: .monospaced))
             }
             .padding(.bottom, 4)
-            
-            // 各来源的比例条
+
+            // 各来源堆叠条形图
             ForEach(availableSources, id: \.self) { source in
                 let sourceUsage = summary.bySource[source]
                 let tokens = sourceUsage?.totalTokens ?? 0
-                let ratio = summary.totalTokens > 0 ? Double(tokens) / Double(summary.totalTokens) : 0
                 let requests = sourceUsage?.requestCount ?? 0
-                
-                VStack(alignment: .leading, spacing: 8) {
-                    HStack {
-                        Circle()
-                            .fill(Color(hex: source.color))
-                            .frame(width: 9, height: 9)
-                        Text(source.rawValue)
-                            .font(.system(size: 13, weight: .medium))
-                        Spacer()
-                        Text(formatTokenCount(tokens))
-                            .font(.system(size: 13, weight: .semibold, design: .monospaced))
-                        if requests > 0 {
-                            Text("(\(Int(ratio * 100))%)")
-                                .font(.system(size: 11))
-                                .foregroundStyle(.secondary)
+
+                if tokens > 0 {
+                    VStack(alignment: .leading, spacing: 8) {
+                        HStack {
+                            AILogoView(aiType: source.aiType, size: 14)
+                            Text(source.rawValue)
+                                .font(.system(size: 13, weight: .medium))
+                            Spacer()
+                            Text(formatTokenCount(tokens))
+                                .font(.system(size: 13, weight: .semibold, design: .monospaced))
+                            if requests > 0 {
+                                Text("(\(Int(Double(tokens) / Double(summary.totalTokens) * 100))%)")
+                                    .font(.system(size: 11))
+                                    .foregroundStyle(.secondary)
+                            }
                         }
+
+                        // 堆叠条形图
+                        stackedBar(
+                            input: sourceUsage?.inputTokens ?? 0,
+                            output: sourceUsage?.outputTokens ?? 0,
+                            cacheRead: sourceUsage?.cacheReadTokens ?? 0,
+                            cacheWrite: sourceUsage?.cacheWriteTokens ?? 0,
+                            maxTotal: summary.totalTokens
+                        )
                     }
-                    
-                    // 进度条
-                    GeometryReader { geo in
-                        ZStack(alignment: .leading) {
-                            RoundedRectangle(cornerRadius: 3)
-                                .fill(Color.gray.opacity(0.15))
-                            RoundedRectangle(cornerRadius: 3)
-                                .fill(Color(hex: source.color))
-                                .frame(width: max(0, geo.size.width * ratio))
-                        }
-                    }
-                    .frame(height: 8)
+                    .padding(.vertical, 4)
                 }
-                .padding(.vertical, 4)
             }
-            
+
             Divider()
                 .padding(.vertical, 4)
-            
-            // input/output/cache 汇总
-            HStack(spacing: 24) {
-                miniStat(label: "Input", value: summary.totalInput, color: .blue)
-                miniStat(label: "Output", value: summary.totalOutput, color: .green)
-                if summary.totalCacheRead > 0 {
-                    miniStat(label: "Cache Read", value: summary.totalCacheRead, color: .orange)
-                }
-            }
+
+            // 图例
+            tokenTypeLegend(summary: summary)
         }
     }
     
     // MARK: - Source Detail Tab
-    
+
     @ViewBuilder
     private func sourceDetail(source: TokenSource, summary: TokenUsageSummary) -> some View {
         let sourceUsage = summary.bySource[source]
         let tokens = sourceUsage?.totalTokens ?? 0
         let requests = sourceUsage?.requestCount ?? 0
-        
+
         // 该来源下的模型
         let models = Array((summary.bySourceModel[source] ?? [:]).values)
             .sorted(by: { $0.totalTokens > $1.totalTokens })
-        
+
         if tokens == 0 {
             emptyState(message: "No \(source.rawValue) usage \(monitor.selectedTimeRange == .day24h ? "in last 24 hours" : monitor.selectedTimeRange == .week7d ? "in last 7 days" : monitor.selectedTimeRange == .month30d ? "in last 30 days" : "recorded")")
         } else {
@@ -175,25 +165,25 @@ struct TokenUsageView: View {
                     Text(formatTokenCount(tokens))
                         .font(.system(size: 32, weight: .bold, design: .monospaced))
                 }
-                
+
                 Text("\(requests) requests")
                     .font(.system(size: 12))
                     .foregroundStyle(.secondary)
                     .padding(.bottom, 6)
-                
+
                 Spacer()
             }
             .padding(.bottom, 4)
-            
-            // 模型列表 + 进度条
+
+            // 模型列表 + 堆叠条形图
             if !models.isEmpty {
                 Text("Models")
                     .font(.system(size: 12, weight: .medium))
                     .foregroundStyle(.secondary)
-                
+
+                let maxModelTokens = models.first?.totalTokens ?? 1
+
                 ForEach(Array(models.prefix(8)), id: \.id) { modelUsage in
-                    let ratio = tokens > 0 ? Double(modelUsage.totalTokens) / Double(tokens) : 0
-                    
                     VStack(alignment: .leading, spacing: 6) {
                         HStack {
                             Text(modelUsage.model)
@@ -203,38 +193,127 @@ struct TokenUsageView: View {
                             Text(formatTokenCount(modelUsage.totalTokens))
                                 .font(.system(size: 12, weight: .semibold, design: .monospaced))
                         }
-                        
-                        GeometryReader { geo in
-                            ZStack(alignment: .leading) {
-                                RoundedRectangle(cornerRadius: 3)
-                                    .fill(Color.gray.opacity(0.12))
-                                RoundedRectangle(cornerRadius: 3)
-                                    .fill(Color(hex: source.color).opacity(0.7))
-                                    .frame(width: max(0, geo.size.width * ratio))
-                            }
-                        }
-                        .frame(height: 6)
+
+                        stackedBar(
+                            input: modelUsage.inputTokens,
+                            output: modelUsage.outputTokens,
+                            cacheRead: modelUsage.cacheReadTokens,
+                            cacheWrite: modelUsage.cacheWriteTokens,
+                            maxTotal: maxModelTokens,
+                            height: 6
+                        )
                     }
                     .padding(.vertical, 4)
                 }
             }
-            
+
             Divider()
                 .padding(.vertical, 4)
-            
-            // Input / Output / Cache 明细
-            let sourceInput = sourceUsage?.inputTokens ?? 0
-            let sourceOutput = sourceUsage?.outputTokens ?? 0
-            
-            HStack(spacing: 24) {
-                miniStat(label: "Input", value: sourceInput, color: .blue)
-                miniStat(label: "Output", value: sourceOutput, color: .green)
-            }
+
+            // 图例 + 明细
+            tokenTypeLegend(
+                input: sourceUsage?.inputTokens ?? 0,
+                output: sourceUsage?.outputTokens ?? 0,
+                cacheRead: sourceUsage?.cacheReadTokens ?? 0,
+                cacheWrite: sourceUsage?.cacheWriteTokens ?? 0
+            )
         }
     }
     
     // MARK: - Helpers
-    
+
+    /// 堆叠横向条形图：按 token 类型分段着色
+    @ViewBuilder
+    private func stackedBar(
+        input: Int, output: Int, cacheRead: Int, cacheWrite: Int,
+        maxTotal: Int, height: CGFloat = 8
+    ) -> some View {
+        let total = input + output + cacheRead + cacheWrite
+        let overallRatio = maxTotal > 0 ? Double(total) / Double(maxTotal) : 0
+
+        GeometryReader { geo in
+            let barWidth = max(0, geo.size.width * overallRatio)
+
+            ZStack(alignment: .leading) {
+                // 背景
+                RoundedRectangle(cornerRadius: 3)
+                    .fill(Color.gray.opacity(0.15))
+
+                // 堆叠色块
+                if total > 0 {
+                    HStack(spacing: 0) {
+                        // Cache Read (最大部分通常在前)
+                        if cacheRead > 0 {
+                            Rectangle()
+                                .fill(Color.orange.opacity(0.7))
+                                .frame(width: barWidth * Double(cacheRead) / Double(total))
+                        }
+                        // Cache Write
+                        if cacheWrite > 0 {
+                            Rectangle()
+                                .fill(Color.purple.opacity(0.7))
+                                .frame(width: barWidth * Double(cacheWrite) / Double(total))
+                        }
+                        // Input
+                        if input > 0 {
+                            Rectangle()
+                                .fill(Color.blue.opacity(0.7))
+                                .frame(width: barWidth * Double(input) / Double(total))
+                        }
+                        // Output
+                        if output > 0 {
+                            Rectangle()
+                                .fill(Color.green.opacity(0.7))
+                                .frame(width: barWidth * Double(output) / Double(total))
+                        }
+                    }
+                    .clipShape(RoundedRectangle(cornerRadius: 3))
+                }
+            }
+        }
+        .frame(height: height)
+    }
+
+    /// 图例 + 各类型数值（All tab 用 summary 版本）
+    @ViewBuilder
+    private func tokenTypeLegend(summary: TokenUsageSummary) -> some View {
+        tokenTypeLegend(
+            input: summary.totalInput,
+            output: summary.totalOutput,
+            cacheRead: summary.totalCacheRead,
+            cacheWrite: summary.totalCacheWrite
+        )
+    }
+
+    /// 图例 + 各类型数值
+    @ViewBuilder
+    private func tokenTypeLegend(input: Int, output: Int, cacheRead: Int, cacheWrite: Int) -> some View {
+        let items: [(String, Int, Color)] = [
+            ("Cache Read", cacheRead, .orange),
+            ("Cache Write", cacheWrite, .purple),
+            ("Input", input, .blue),
+            ("Output", output, .green),
+        ].filter { $0.1 > 0 }
+
+        HStack(spacing: 16) {
+            ForEach(items, id: \.0) { label, value, color in
+                HStack(spacing: 5) {
+                    RoundedRectangle(cornerRadius: 2)
+                        .fill(color.opacity(0.7))
+                        .frame(width: 10, height: 10)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(label)
+                            .font(.system(size: 10))
+                            .foregroundStyle(.secondary)
+                        Text(formatTokenCount(value))
+                            .font(.system(size: 13, weight: .semibold, design: .monospaced))
+                            .foregroundStyle(color)
+                    }
+                }
+            }
+        }
+    }
+
     @ViewBuilder
     private func emptyState(message: String) -> some View {
         VStack(spacing: 12) {
@@ -249,18 +328,7 @@ struct TokenUsageView: View {
         .padding(.vertical, 32)
     }
     
-    @ViewBuilder
-    private func miniStat(label: String, value: Int, color: Color) -> some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Text(label)
-                .font(.system(size: 11))
-                .foregroundStyle(.secondary)
-            Text(formatTokenCount(value))
-                .font(.system(size: 15, weight: .semibold, design: .monospaced))
-                .foregroundStyle(color)
-        }
-    }
-    
+
 }
 
 // MARK: - Usage Filter Chip (matching Session Manager's FilterChip)

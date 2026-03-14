@@ -48,7 +48,7 @@ struct TokenRecord: Identifiable {
     let cacheReadTokens: Int    // Claude: cache_read_input_tokens
     let cacheWriteTokens: Int   // Claude: cache_creation_input_tokens
     
-    var totalTokens: Int { inputTokens + outputTokens }
+    var totalTokens: Int { inputTokens + outputTokens + cacheReadTokens + cacheWriteTokens }
 }
 
 /// token 来源
@@ -107,7 +107,7 @@ struct TokenUsageSummary {
     var totalCacheRead: Int = 0
     var totalCacheWrite: Int = 0
     
-    var totalTokens: Int { totalInput + totalOutput }
+    var totalTokens: Int { totalInput + totalOutput + totalCacheRead + totalCacheWrite }
     
     /// 分模型统计
     var byModel: [String: ModelUsage] = [:]
@@ -136,6 +136,8 @@ struct TokenUsageSummary {
         var modelUsage = byModel[record.model] ?? ModelUsage(model: record.model)
         modelUsage.inputTokens += record.inputTokens
         modelUsage.outputTokens += record.outputTokens
+        modelUsage.cacheReadTokens += record.cacheReadTokens
+        modelUsage.cacheWriteTokens += record.cacheWriteTokens
         modelUsage.requestCount += 1
         byModel[record.model] = modelUsage
 
@@ -144,20 +146,24 @@ struct TokenUsageSummary {
         var sourceModelUsage = sourceModels[record.model] ?? ModelUsage(model: record.model)
         sourceModelUsage.inputTokens += record.inputTokens
         sourceModelUsage.outputTokens += record.outputTokens
+        sourceModelUsage.cacheReadTokens += record.cacheReadTokens
+        sourceModelUsage.cacheWriteTokens += record.cacheWriteTokens
         sourceModelUsage.requestCount += 1
         sourceModels[record.model] = sourceModelUsage
         bySourceModel[record.source] = sourceModels
-        
+
         // 按来源聚合
         var sourceUsage = bySource[record.source] ?? SourceUsage(source: record.source)
         sourceUsage.inputTokens += record.inputTokens
         sourceUsage.outputTokens += record.outputTokens
+        sourceUsage.cacheReadTokens += record.cacheReadTokens
+        sourceUsage.cacheWriteTokens += record.cacheWriteTokens
         sourceUsage.requestCount += 1
         bySource[record.source] = sourceUsage
         
         // 按小时聚合
         let hour = Calendar.current.component(.hour, from: record.timestamp)
-        hourlyTrend[hour, default: 0] += record.totalTokens
+        hourlyTrend[hour, default: 0] += record.totalTokens  // input+output+cache
     }
 }
 
@@ -167,8 +173,10 @@ struct ModelUsage: Identifiable {
     let model: String
     var inputTokens: Int = 0
     var outputTokens: Int = 0
+    var cacheReadTokens: Int = 0
+    var cacheWriteTokens: Int = 0
     var requestCount: Int = 0
-    var totalTokens: Int { inputTokens + outputTokens }
+    var totalTokens: Int { inputTokens + outputTokens + cacheReadTokens + cacheWriteTokens }
 }
 
 /// 单个来源的用量统计
@@ -177,8 +185,10 @@ struct SourceUsage: Identifiable {
     let source: TokenSource
     var inputTokens: Int = 0
     var outputTokens: Int = 0
+    var cacheReadTokens: Int = 0
+    var cacheWriteTokens: Int = 0
     var requestCount: Int = 0
-    var totalTokens: Int { inputTokens + outputTokens }
+    var totalTokens: Int { inputTokens + outputTokens + cacheReadTokens + cacheWriteTokens }
 }
 
 // MARK: - Helpers

@@ -163,7 +163,8 @@ final class TokenUsageMonitor {
         switch source {
         case .claude:
             // Claude: ~/.claude/projects/ 下有多个项目目录，每个里面有 session JSONL
-            records = scanClaudeDirectory(baseDir)
+            // 子目录中还可能有 subagents/ 目录包含子代理日志，需递归扫描
+            records = scanDirectoryRecursively(baseDir, source: .claude)
         case .codex:
             // Codex: ~/.codex/sessions/年/月/日/ 下有 JSONL（嵌套目录结构）
             records = scanDirectoryRecursively(baseDir, source: .codex)
@@ -178,42 +179,7 @@ final class TokenUsageMonitor {
         return records
     }
     
-    /// 扫描 Claude 项目目录（需要递归一层子目录）
-    private func scanClaudeDirectory(_ baseDir: String) -> [TokenRecord] {
-        let fm = FileManager.default
-        guard let projectDirs = try? fm.contentsOfDirectory(atPath: baseDir) else { return [] }
-        
-        var records: [TokenRecord] = []
-        for dir in projectDirs {
-            let projectPath = (baseDir as NSString).appendingPathComponent(dir)
-            var isDir: ObjCBool = false
-            guard fm.fileExists(atPath: projectPath, isDirectory: &isDir), isDir.boolValue else { continue }
-            
-            records += scanJSONLDirectory(projectPath, source: .claude)
-        }
-        return records
-    }
-    
-    /// 扫描一个目录下指定时间范围内修改过的 JSONL 文件
-    private func scanJSONLDirectory(_ dir: String, source: TokenSource) -> [TokenRecord] {
-        let fm = FileManager.default
-        guard let files = try? fm.contentsOfDirectory(atPath: dir) else { return [] }
-        
-        var records: [TokenRecord] = []
-        
-        for file in files where file.hasSuffix(".jsonl") {
-            let fullPath = (dir as NSString).appendingPathComponent(file)
-            
-            guard isFileInRange(fullPath) else { continue }
-            
-            let fileRecords = parseJSONLFile(fullPath, source: source)
-            records += fileRecords
-        }
-        
-        return records
-    }
-    
-    /// 递归扫描目录树中所有今天修改的 JSONL 文件（适用于 Codex 的 年/月/日 嵌套结构）
+    /// 递归扫描目录树中所有今天修改的 JSONL 文件
     private func scanDirectoryRecursively(_ baseDir: String, source: TokenSource) -> [TokenRecord] {
         let fm = FileManager.default
         guard let enumerator = fm.enumerator(atPath: baseDir) else { return [] }
