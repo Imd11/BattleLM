@@ -22,8 +22,13 @@ final class TokenUsageMonitor {
     var summary = TokenUsageSummary()
     
     /// 当前选择的时间范围
-    var selectedTimeRange: UsageTimeRange = .day24h {
-        didSet { if oldValue != selectedTimeRange { refresh() } }
+    var selectedTimeRange: UsageTimeRange = .today {
+        didSet {
+            if oldValue != selectedTimeRange {
+                // 直接在内存中重新聚合，无需重读磁盘
+                queue.async { [weak self] in self?.rebuildSummary() }
+            }
+        }
     }
     
     /// 是否正在扫描
@@ -33,14 +38,20 @@ final class TokenUsageMonitor {
     var lastUpdated: Date?
     
     // MARK: - Private
-    
+
     private let queue = DispatchQueue(label: "com.battlelm.tokenMonitor", qos: .utility)
     private var directorySources: [DispatchSourceFileSystemObject] = []
     private var fileWatchers: [String: FileWatcher] = [:]   // path → watcher
     private var refreshTimer: DispatchSourceTimer?           // 定时刷新
-    
-    /// 根据当前时间范围计算的起始日期
-    private var rangeStartDate: Date? { selectedTimeRange.startDate }
+
+    /// 全量缓存（始终保存最大时间范围内的所有记录，切换范围时直接内存过滤）
+    private var cachedRecords: [TokenRecord] = []
+
+    /// 当前时间范围的起始日期（用于 rebuildSummary 过滤）
+    private var rangeStartDate: Date { selectedTimeRange.startDate }
+
+    /// 扫描时使用的最大时间范围（保证任意切换都命中缓存）
+    private var maxRangeStartDate: Date { UsageTimeRange.month6m.startDate }
     
     /// 单个文件的监听状态
     private struct FileWatcher {
@@ -136,20 +147,24 @@ final class TokenUsageMonitor {
     deinit { stopMonitoring() }
     
     // MARK: - Scanning
-    
-    /// 扫描指定时间范围内的数据
+
+    /// 全量扫描（按最大时间范围读盘，更新缓存后重新聚合）
     private func scanData() {
-        var newSummary = TokenUsageSummary()
-        
+        var newRecords: [TokenRecord] = []
         for source in TokenSource.allCases {
-            let records = scanSource(source)
-            for record in records {
-                // 按时间范围过滤
-                if let start = rangeStartDate, record.timestamp < start { continue }
-                newSummary.addRecord(record)
-            }
+            newRecords += scanSource(source)
         }
-        
+        cachedRecords = newRecords
+        rebuildSummary()
+    }
+
+    /// 从内存缓存按当前时间范围重新聚合，不触发磁盘 I/O
+    private func rebuildSummary() {
+        let startDate = rangeStartDate
+        var newSummary = TokenUsageSummary()
+        for record in cachedRecords where record.timestamp >= startDate {
+            newSummary.addRecord(record)
+        }
         DispatchQueue.main.async { [newSummary] in
             self.summary = newSummary
         }
@@ -255,18 +270,17 @@ final class TokenUsageMonitor {
     
     // MARK: - Time Range Helpers
     
-    /// 检查文件修改日期是否在时间范围内
+    /// 检查文件修改日期是否在最大扫描范围内（始终用最大范围，保证缓存完整）
     private func isFileInRange(_ path: String) -> Bool {
-        guard let start = rangeStartDate else { return true }  // nil = 无限制
+        let start = maxRangeStartDate
         guard let attrs = try? FileManager.default.attributesOfItem(atPath: path),
               let modDate = attrs[.modificationDate] as? Date else { return false }
         return modDate >= start
     }
-    
-    /// 检查时间戳是否在时间范围内
+
+    /// 检查时间戳是否在最大扫描范围内（存入缓存时用最大范围过滤）
     private func isTimestampInRange(_ date: Date) -> Bool {
-        guard let start = rangeStartDate else { return true }  // nil = 无限制
-        return date >= start
+        date >= maxRangeStartDate
     }
     
     // MARK: - JSONL Parsing

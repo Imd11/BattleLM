@@ -2,6 +2,7 @@
 // Token 用量仪表盘 — 按来源分 Tab 显示 Claude 和 Codex 的 token 消耗统计
 
 import SwiftUI
+import Charts
 
 // MARK: - Usage Tab
 
@@ -22,7 +23,24 @@ enum UsageTab: Hashable {
 struct TokenUsageView: View {
     let monitor: TokenUsageMonitor
     @State private var selectedTab: UsageTab = .all
-    
+    @State private var chartHoverDate: Date? = nil
+
+    /// 模型曲线调色板（10 色，循环使用）
+    private static let modelColorPalette: [Color] = [
+        Color(hex: "#3B82F6"), Color(hex: "#EF4444"), Color(hex: "#10B981"),
+        Color(hex: "#F59E0B"), Color(hex: "#8B5CF6"), Color(hex: "#EC4899"),
+        Color(hex: "#06B6D4"), Color(hex: "#84CC16"), Color(hex: "#F97316"),
+        Color(hex: "#6366F1"),
+    ]
+    /// 模型曲线线型（5 种，循环使用）
+    private static let modelLineStyles: [StrokeStyle] = [
+        StrokeStyle(lineWidth: 1.5),
+        StrokeStyle(lineWidth: 1.5, dash: [8, 4]),
+        StrokeStyle(lineWidth: 1.5, dash: [2, 3]),
+        StrokeStyle(lineWidth: 1.5, dash: [8, 3, 2, 3]),
+        StrokeStyle(lineWidth: 1.5, dash: [4, 4]),
+    ]
+
     /// 有数据或已支持的来源
     private var availableSources: [TokenSource] {
         TokenSource.allCases
@@ -138,6 +156,16 @@ struct TokenUsageView: View {
 
             // 图例
             tokenTypeLegend(summary: summary)
+
+            // 每日趋势折线图（总量 + 各来源合计，不展示细分模型）
+            if monitor.selectedTimeRange.showsDailyTrend {
+                dailyTrendChart(
+                    grandTotal: dailyGrandTotal(from: summary.dailyTrendPoints),
+                    sourceTotals: summary.dailyTrendPoints,
+                    hoverBinding: $chartHoverDate
+                )
+                .padding(.top, 8)
+            }
         }
     }
     
@@ -154,7 +182,7 @@ struct TokenUsageView: View {
             .sorted(by: { $0.totalTokens > $1.totalTokens })
 
         if tokens == 0 {
-            emptyState(message: "No \(source.rawValue) usage \(monitor.selectedTimeRange == .day24h ? "in last 24 hours" : monitor.selectedTimeRange == .week7d ? "in last 7 days" : monitor.selectedTimeRange == .month30d ? "in last 30 days" : "recorded")")
+            emptyState(message: monitor.selectedTimeRange.emptyMessage.replacingOccurrences(of: "token", with: source.rawValue))
         } else {
             // 来源总量
             HStack(alignment: .bottom, spacing: 12) {
@@ -217,9 +245,277 @@ struct TokenUsageView: View {
                 cacheRead: sourceUsage?.cacheReadTokens ?? 0,
                 cacheWrite: sourceUsage?.cacheWriteTokens ?? 0
             )
+
+            // 每日趋势折线图（该 source 合计 + 该 source 各模型）
+            if monitor.selectedTimeRange.showsDailyTrend {
+                let sourceTotals = summary.dailyTrendPoints.filter { $0.source == source }
+                let sourceModels = summary.dailyModelTrendPoints.filter { $0.source == source }
+                dailyTrendChart(
+                    sourceTotals: sourceTotals,
+                    modelPoints: sourceModels,
+                    hoverBinding: $chartHoverDate
+                )
+                .padding(.top, 8)
+            }
         }
     }
     
+    // MARK: - Daily Trend Line Chart
+
+    /// grandTotal: 所有来源合并的每日总量（仅 All tab 传入）
+    /// sourceTotals: 各来源每日合计线
+    /// modelPoints: 各细分模型线（仅 AI tab 传入）
+    @ViewBuilder
+    private func dailyTrendChart(
+        grandTotal: [(date: Date, tokens: Int)] = [],
+        sourceTotals: [DailyTrendPoint],
+        modelPoints: [DailyModelTrendPoint] = [],
+        hoverBinding: Binding<Date?> = .constant(nil)
+    ) -> some View {
+        let hasData = !grandTotal.isEmpty || !sourceTotals.isEmpty || !modelPoints.isEmpty
+        if !hasData {
+            EmptyView()
+        } else {
+            let uniqueModelNames = modelPoints.map(\.model).uniqued()
+            // 只有单个数据点的系列需要 PointMark（多点时 LineMark 自己会画线，PointMark 反而造成先出现点再出现线的视觉抖动）
+            let grandTotalIsSingle = grandTotal.count == 1
+            let singlePointSources = Set(
+                Dictionary(grouping: sourceTotals, by: { $0.source.rawValue })
+                    .filter { $0.value.count == 1 }.keys
+            )
+            let singlePointModels = Set(
+                Dictionary(grouping: modelPoints, by: \.model)
+                    .filter { $0.value.count == 1 }.keys
+            )
+            VStack(alignment: .leading, spacing: 6) {
+                Text("Daily Trend")
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundStyle(.secondary)
+
+                Chart {
+                    // 总量线：最粗，主色（仅 All tab）
+                    ForEach(grandTotal, id: \.date) { pt in
+                        LineMark(
+                            x: .value("Date", pt.date, unit: .day),
+                            y: .value("Tokens", pt.tokens),
+                            series: .value("Series", "Total")
+                        )
+                        .foregroundStyle(Color.primary.opacity(0.75))
+                        .lineStyle(StrokeStyle(lineWidth: 3))
+                        .interpolationMethod(.monotone)
+
+                        AreaMark(
+                            x: .value("Date", pt.date, unit: .day),
+                            y: .value("Tokens", pt.tokens),
+                            series: .value("Series", "Total")
+                        )
+                        .foregroundStyle(Color.primary.opacity(0.04))
+                        .interpolationMethod(.monotone)
+
+                        if grandTotalIsSingle {
+                            PointMark(
+                                x: .value("Date", pt.date, unit: .day),
+                                y: .value("Tokens", pt.tokens)
+                            )
+                            .foregroundStyle(Color.primary.opacity(0.75))
+                            .symbolSize(50)
+                        }
+                    }
+
+                    // 来源合计线：粗实线；仅在 AI tab（grandTotal 为空）时附加阴影面积，All tab 阴影已由 Total 线承担
+                    ForEach(sourceTotals) { pt in
+                        let color = Color(hex: pt.source.color)
+
+                        LineMark(
+                            x: .value("Date", pt.date, unit: .day),
+                            y: .value("Tokens", pt.tokens),
+                            series: .value("Series", pt.source.rawValue)
+                        )
+                        .foregroundStyle(color)
+                        .lineStyle(StrokeStyle(lineWidth: 2.5))
+                        .interpolationMethod(.monotone)
+
+                        if grandTotal.isEmpty {
+                            AreaMark(
+                                x: .value("Date", pt.date, unit: .day),
+                                y: .value("Tokens", pt.tokens),
+                                series: .value("Series", pt.source.rawValue)
+                            )
+                            .foregroundStyle(color.opacity(0.08))
+                            .interpolationMethod(.monotone)
+                        }
+
+                        if singlePointSources.contains(pt.source.rawValue) {
+                            PointMark(
+                                x: .value("Date", pt.date, unit: .day),
+                                y: .value("Tokens", pt.tokens)
+                            )
+                            .foregroundStyle(color)
+                            .symbolSize(40)
+                        }
+                    }
+
+                    // 模型细线：不同颜色 + 不同线型区分（仅 AI tab）
+                    ForEach(modelPoints) { pt in
+                        let idx = uniqueModelNames.firstIndex(of: pt.model) ?? 0
+                        let color = Self.modelColorPalette[idx % Self.modelColorPalette.count]
+                        let style = Self.modelLineStyles[idx % Self.modelLineStyles.count]
+
+                        LineMark(
+                            x: .value("Date", pt.date, unit: .day),
+                            y: .value("Tokens", pt.tokens),
+                            series: .value("Series", pt.model)
+                        )
+                        .foregroundStyle(color)
+                        .lineStyle(style)
+                        .interpolationMethod(.monotone)
+
+                        if singlePointModels.contains(pt.model) {
+                            PointMark(
+                                x: .value("Date", pt.date, unit: .day),
+                                y: .value("Tokens", pt.tokens)
+                            )
+                            .foregroundStyle(color)
+                            .symbolSize(15)
+                        }
+                    }
+
+                    // Hover 竖线 + Tooltip
+                    if let hoveredDate = hoverBinding.wrappedValue {
+                        RuleMark(x: .value("Hover", hoveredDate, unit: .day))
+                            .foregroundStyle(Color.secondary.opacity(0.25))
+                            .lineStyle(StrokeStyle(lineWidth: 1))
+                            .annotation(
+                                position: .top,
+                                spacing: 4,
+                                overflowResolution: .init(x: .fit(to: .chart), y: .disabled)
+                            ) {
+                                chartTooltip(
+                                    date: hoveredDate,
+                                    grandTotal: grandTotal,
+                                    sourceTotals: sourceTotals,
+                                    modelPoints: modelPoints,
+                                    uniqueModelNames: uniqueModelNames
+                                )
+                            }
+                    }
+                }
+                .chartXAxis {
+                    let allDates = grandTotal.map(\.date) + sourceTotals.map(\.date) + modelPoints.map(\.date)
+                    let totalDays = Set(allDates.map { Calendar.current.startOfDay(for: $0) }).count
+                    if totalDays <= 14 {
+                        AxisMarks(values: .stride(by: .day)) { _ in
+                            AxisGridLine()
+                            AxisValueLabel(format: .dateTime.month(.abbreviated).day())
+                        }
+                    } else if totalDays <= 60 {
+                        AxisMarks(values: .stride(by: .weekOfYear)) { _ in
+                            AxisGridLine()
+                            AxisValueLabel(format: .dateTime.month(.abbreviated).day())
+                        }
+                    } else {
+                        AxisMarks(values: .stride(by: .month)) { _ in
+                            AxisGridLine()
+                            AxisValueLabel(format: .dateTime.month(.abbreviated))
+                        }
+                    }
+                }
+                .chartYAxis {
+                    AxisMarks { value in
+                        AxisGridLine()
+                        AxisValueLabel {
+                            if let v = value.as(Int.self) {
+                                Text(formatTokenCount(v))
+                            }
+                        }
+                    }
+                }
+                .chartLegend(.hidden)
+                .frame(height: 160)
+                .chartOverlay { proxy in
+                    GeometryReader { geo in
+                        let plotFrame = geo[proxy.plotAreaFrame]
+                        Rectangle()
+                            .fill(.clear)
+                            .contentShape(Rectangle())
+                            .onContinuousHover { phase in
+                                switch phase {
+                                case .active(let location):
+                                    let xInPlot = location.x - plotFrame.origin.x
+                                    guard xInPlot >= 0, xInPlot <= plotFrame.width else {
+                                        hoverBinding.wrappedValue = nil
+                                        return
+                                    }
+                                    if let rawDate: Date = proxy.value(atX: xInPlot, as: Date.self) {
+                                        // 吸附到最近的数据日期
+                                        let allDates = (grandTotal.map(\.date) + sourceTotals.map(\.date) + modelPoints.map(\.date))
+                                            .map { Calendar.current.startOfDay(for: $0) }
+                                        let uniqueDates = Array(Set(allDates)).sorted()
+                                        hoverBinding.wrappedValue = uniqueDates.min {
+                                            abs($0.timeIntervalSince(rawDate)) < abs($1.timeIntervalSince(rawDate))
+                                        }
+                                    }
+                                case .ended:
+                                    hoverBinding.wrappedValue = nil
+                                }
+                            }
+                    }
+                }
+
+                // 图例
+                HStack(spacing: 12) {
+                    // Total（仅 All tab）
+                    if !grandTotal.isEmpty {
+                        HStack(spacing: 4) {
+                            Circle()
+                                .fill(Color.primary.opacity(0.75))
+                                .frame(width: 7, height: 7)
+                            Text("Total")
+                                .font(.system(size: 10, weight: .semibold))
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                    // 各来源
+                    ForEach(sourceTotals.map(\.source).uniqued(), id: \.self) { source in
+                        HStack(spacing: 4) {
+                            Circle()
+                                .fill(Color(hex: source.color))
+                                .frame(width: 7, height: 7)
+                            Text(source.rawValue)
+                                .font(.system(size: 10, weight: .medium))
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                }
+
+                // 模型图例（仅 AI tab，各模型颜色+线型区分）
+                if !uniqueModelNames.isEmpty {
+                    FlowLayout(spacing: 8) {
+                        ForEach(Array(uniqueModelNames.enumerated()), id: \.element) { idx, name in
+                            HStack(spacing: 4) {
+                                modelLineIndicator(
+                                    color: Self.modelColorPalette[idx % Self.modelColorPalette.count],
+                                    styleIndex: idx
+                                )
+                                Text(name)
+                                    .font(.system(size: 9))
+                                    .foregroundStyle(.secondary)
+                                    .lineLimit(1)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    /// 按日期聚合所有来源的合计（供 All tab 的 Total 线使用）
+    private func dailyGrandTotal(from points: [DailyTrendPoint]) -> [(date: Date, tokens: Int)] {
+        Dictionary(grouping: points, by: \.date)
+            .map { (date: $0.key, tokens: $0.value.reduce(0) { $0 + $1.tokens }) }
+            .sorted { $0.date < $1.date }
+    }
+
     // MARK: - Helpers
 
     /// 堆叠横向条形图：按 token 类型分段着色
@@ -314,6 +610,98 @@ struct TokenUsageView: View {
         }
     }
 
+    // MARK: - Hover Tooltip
+
+    @ViewBuilder
+    private func chartTooltip(
+        date: Date,
+        grandTotal: [(date: Date, tokens: Int)],
+        sourceTotals: [DailyTrendPoint],
+        modelPoints: [DailyModelTrendPoint],
+        uniqueModelNames: [String]
+    ) -> some View {
+        let cal = Calendar.current
+        let gtPt  = grandTotal.first  { cal.isDate($0.date, inSameDayAs: date) }
+        let srcPts = sourceTotals.filter { cal.isDate($0.date, inSameDayAs: date) }
+        let mdlPts = modelPoints.filter  { cal.isDate($0.date, inSameDayAs: date) }
+            .sorted { $0.tokens > $1.tokens }
+
+        VStack(alignment: .leading, spacing: 5) {
+            Text(date, format: .dateTime.month(.abbreviated).day(.defaultDigits))
+                .font(.system(size: 10, weight: .semibold))
+                .foregroundStyle(.secondary)
+
+            if gtPt != nil || !srcPts.isEmpty || !mdlPts.isEmpty {
+                Divider()
+            }
+
+            if let pt = gtPt {
+                tooltipRow(dot: Color.primary.opacity(0.75), label: "Total", tokens: pt.tokens)
+            }
+            ForEach(srcPts) { pt in
+                tooltipRow(dot: Color(hex: pt.source.color), label: pt.source.rawValue, tokens: pt.tokens)
+            }
+            ForEach(mdlPts) { pt in
+                let idx = uniqueModelNames.firstIndex(of: pt.model) ?? 0
+                let color = Self.modelColorPalette[idx % Self.modelColorPalette.count]
+                tooltipRow(dot: color, label: pt.model, tokens: pt.tokens)
+            }
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 8)
+        .background(RoundedRectangle(cornerRadius: 8).fill(.regularMaterial))
+        .frame(minWidth: 160)
+    }
+
+    @ViewBuilder
+    private func tooltipRow(dot: Color, label: String, tokens: Int) -> some View {
+        HStack(spacing: 5) {
+            Circle().fill(dot).frame(width: 5, height: 5)
+            Text(label)
+                .font(.system(size: 10))
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+                .truncationMode(.middle)
+            Spacer(minLength: 8)
+            Text(formatTokenCount(tokens))
+                .font(.system(size: 10, weight: .semibold, design: .monospaced))
+        }
+    }
+
+    /// 图例中对应模型线型的小图标（颜色 + 虚实形状）
+    @ViewBuilder
+    private func modelLineIndicator(color: Color, styleIndex: Int) -> some View {
+        switch styleIndex % Self.modelLineStyles.count {
+        case 0: // 实线
+            Rectangle()
+                .fill(color)
+                .frame(width: 18, height: 1.5)
+        case 1: // 长虚线
+            HStack(spacing: 3) {
+                Rectangle().fill(color).frame(width: 7, height: 1.5)
+                Rectangle().fill(color).frame(width: 7, height: 1.5)
+            }
+        case 2: // 点线
+            HStack(spacing: 2) {
+                ForEach(0..<3, id: \.self) { _ in
+                    Circle().fill(color).frame(width: 2.5, height: 2.5)
+                }
+            }
+        case 3: // 点划线
+            HStack(spacing: 2) {
+                Rectangle().fill(color).frame(width: 6, height: 1.5)
+                Circle().fill(color).frame(width: 2.5, height: 2.5)
+                Rectangle().fill(color).frame(width: 6, height: 1.5)
+            }
+        default: // 短虚线
+            HStack(spacing: 2) {
+                ForEach(0..<3, id: \.self) { _ in
+                    Rectangle().fill(color).frame(width: 4, height: 1.5)
+                }
+            }
+        }
+    }
+
     @ViewBuilder
     private func emptyState(message: String) -> some View {
         VStack(spacing: 12) {
@@ -398,7 +786,7 @@ private struct TimeRangeButton: View {
     let isSelected: Bool
     let action: () -> Void
     @State private var isHovered = false
-    
+
     var body: some View {
         Button(action: action) {
             Text(label)
@@ -420,5 +808,55 @@ private struct TimeRangeButton: View {
         }
         .buttonStyle(.plain)
         .onHover { isHovered = $0 }
+    }
+}
+
+// MARK: - Array Uniqued Helper
+
+private extension Array where Element: Hashable {
+    func uniqued() -> [Element] {
+        var seen = Set<Element>()
+        return filter { seen.insert($0).inserted }
+    }
+}
+
+// MARK: - Flow Layout (wrap model legend items)
+
+private struct FlowLayout: Layout {
+    var spacing: CGFloat = 8
+
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        let maxWidth = proposal.width ?? .infinity
+        var x: CGFloat = 0
+        var y: CGFloat = 0
+        var rowHeight: CGFloat = 0
+        for subview in subviews {
+            let size = subview.sizeThatFits(.unspecified)
+            if x + size.width > maxWidth && x > 0 {
+                x = 0
+                y += rowHeight + spacing
+                rowHeight = 0
+            }
+            x += size.width + spacing
+            rowHeight = max(rowHeight, size.height)
+        }
+        return CGSize(width: maxWidth, height: y + rowHeight)
+    }
+
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        var x: CGFloat = bounds.minX
+        var y: CGFloat = bounds.minY
+        var rowHeight: CGFloat = 0
+        for subview in subviews {
+            let size = subview.sizeThatFits(.unspecified)
+            if x + size.width > bounds.maxX && x > bounds.minX {
+                x = bounds.minX
+                y += rowHeight + spacing
+                rowHeight = 0
+            }
+            subview.place(at: CGPoint(x: x, y: y), proposal: ProposedViewSize(size))
+            x += size.width + spacing
+            rowHeight = max(rowHeight, size.height)
+        }
     }
 }

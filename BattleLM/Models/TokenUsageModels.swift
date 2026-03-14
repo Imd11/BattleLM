@@ -7,31 +7,39 @@ import Foundation
 
 /// 时间范围选择
 enum UsageTimeRange: String, CaseIterable, Hashable {
-    case day24h  = "24h"
-    case week7d  = "7d"
-    case month30d = "30d"
-    case all     = "Any"
-    
-    /// 起始日期（nil = 不限）
-    var startDate: Date? {
+    case today    = "Today"
+    case week7d   = "7D"
+    case month30d = "30D"
+    case month3m  = "3M"
+    case month6m  = "6M"
+
+    /// 起始日期（基于自然日历周期）
+    var startDate: Date {
         let cal = Calendar.current
-        let now = Date()
+        let startOfToday = cal.startOfDay(for: Date())
         switch self {
-        case .day24h:  return cal.date(byAdding: .hour, value: -24, to: now)
-        case .week7d:  return cal.date(byAdding: .day, value: -7, to: now)
-        case .month30d: return cal.date(byAdding: .day, value: -30, to: now)
-        case .all:     return nil
+        case .today:    return startOfToday
+        case .week7d:   return cal.date(byAdding: .day, value: -6, to: startOfToday)!
+        case .month30d: return cal.date(byAdding: .day, value: -29, to: startOfToday)!
+        case .month3m:  return cal.date(byAdding: .month, value: -3, to: startOfToday)!
+        case .month6m:  return cal.date(byAdding: .month, value: -6, to: startOfToday)!
         }
     }
-    
+
     /// 空数据时的提示文字
     var emptyMessage: String {
         switch self {
-        case .day24h:  return "No token usage in last 24 hours"
-        case .week7d:  return "No token usage in last 7 days"
+        case .today:    return "No token usage today"
+        case .week7d:   return "No token usage in last 7 days"
         case .month30d: return "No token usage in last 30 days"
-        case .all:     return "No token usage recorded"
+        case .month3m:  return "No token usage in last 3 months"
+        case .month6m:  return "No token usage in last 6 months"
         }
+    }
+
+    /// 是否显示每日趋势折线图（Today 不显示）
+    var showsDailyTrend: Bool {
+        self != .today
     }
 }
 
@@ -98,6 +106,25 @@ enum TokenSource: String, CaseIterable {
     }
 }
 
+// MARK: - Daily Trend Point
+
+/// 单日某来源的 token 用量（来源合计，供折线图渲染）
+struct DailyTrendPoint: Identifiable {
+    let id = UUID()
+    let date: Date          // start-of-day
+    let source: TokenSource
+    let tokens: Int
+}
+
+/// 单日某来源某模型的 token 用量（模型细线，供折线图渲染）
+struct DailyModelTrendPoint: Identifiable {
+    let id = UUID()
+    let date: Date
+    let source: TokenSource
+    let model: String
+    let tokens: Int
+}
+
 // MARK: - Token Usage Summary
 
 /// 聚合后的 token 用量汇总
@@ -120,6 +147,48 @@ struct TokenUsageSummary {
     
     /// 按小时分布（key = hour 0-23）
     var hourlyTrend: [Int: Int] = [:]
+
+    /// 按日+来源聚合（key = "yyyy-MM-dd"）
+    var dailyTrendBySource: [String: [TokenSource: Int]] = [:]
+
+    /// 按日+来源+模型聚合 [dayKey: [source: [model: tokens]]]
+    var dailyTrendBySourceModel: [String: [TokenSource: [String: Int]]] = [:]
+
+    /// 日期格式化器（复用）
+    static let dayFormatter: DateFormatter = {
+        let f = DateFormatter()
+        f.dateFormat = "yyyy-MM-dd"
+        f.locale = Locale(identifier: "en_US_POSIX")
+        return f
+    }()
+
+    /// 展平+排序后的每日来源合计数据点，供折线图渲染
+    var dailyTrendPoints: [DailyTrendPoint] {
+        let cal = Calendar.current
+        return dailyTrendBySource.flatMap { (dayKey, sourcesMap) -> [DailyTrendPoint] in
+            guard let date = Self.dayFormatter.date(from: dayKey) else { return [] }
+            let startOfDay = cal.startOfDay(for: date)
+            return sourcesMap.map { (source, tokens) in
+                DailyTrendPoint(date: startOfDay, source: source, tokens: tokens)
+            }
+        }
+        .sorted { $0.date < $1.date || ($0.date == $1.date && $0.source.rawValue < $1.source.rawValue) }
+    }
+
+    /// 展平+排序后的每日模型级数据点，供折线图渲染
+    var dailyModelTrendPoints: [DailyModelTrendPoint] {
+        let cal = Calendar.current
+        return dailyTrendBySourceModel.flatMap { (dayKey, sourcesMap) -> [DailyModelTrendPoint] in
+            guard let date = Self.dayFormatter.date(from: dayKey) else { return [] }
+            let startOfDay = cal.startOfDay(for: date)
+            return sourcesMap.flatMap { (source, modelsMap) in
+                modelsMap.map { (model, tokens) in
+                    DailyModelTrendPoint(date: startOfDay, source: source, model: model, tokens: tokens)
+                }
+            }
+        }
+        .sorted { $0.date < $1.date }
+    }
     
     /// 格式化的总 token 数
     var formattedTotal: String {
@@ -164,6 +233,13 @@ struct TokenUsageSummary {
         // 按小时聚合
         let hour = Calendar.current.component(.hour, from: record.timestamp)
         hourlyTrend[hour, default: 0] += record.totalTokens  // input+output+cache
+
+        // 按日+来源聚合
+        let dayKey = Self.dayFormatter.string(from: record.timestamp)
+        dailyTrendBySource[dayKey, default: [:]][record.source, default: 0] += record.totalTokens
+
+        // 按日+来源+模型聚合
+        dailyTrendBySourceModel[dayKey, default: [:]][record.source, default: [:]][record.model, default: 0] += record.totalTokens
     }
 }
 
